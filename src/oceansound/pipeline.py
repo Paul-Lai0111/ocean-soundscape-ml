@@ -184,11 +184,17 @@ def cmd_mbari(a):
             log.info("%s: using cache", date)
         else:
             log.info("%s: streaming %d x %gs windows from S3", date, a.n_segments, a.seg_seconds)
-            df, ltsa, thumbs = extract_all(stream_mbari_day(date, a.n_segments, a.seg_seconds),
-                                           a.calibration_db)
+            try:
+                df, ltsa, thumbs = extract_all(stream_mbari_day(date, a.n_segments, a.seg_seconds),
+                                               a.calibration_db)
+            except (FileNotFoundError, RuntimeError) as e:  # day missing, or all windows were gaps
+                log.warning("%s: skipped (%s)", date, e)
+                continue
             save_features(cache, df, ltsa, thumbs, tag)
         parts.append(load_features(cache, tag))
 
+    if not parts:
+        raise SystemExit("no usable days")
     df = pd.concat([p[0] for p in parts], ignore_index=True)
     save_features(a.out, df, np.concatenate([p[1] for p in parts]), np.concatenate([p[2] for p in parts]))
     analyse(a.out, a.seg_seconds, a.k, a.seed, a.features, a.clip, a.calibration_db)
@@ -238,6 +244,25 @@ def cmd_wind(a):
     (a.out / "summary.json").write_text(json.dumps(summary, indent=2))
     log.info("wind vs b_1k_8k: Spearman r=%.3f (n=%d)\n%s", r, summary["wind"]["n_matched"],
              corr.head(8).round(3))
+
+
+def cmd_patterns(a):
+    """Monthly and month x hour summaries of selected features."""
+    from . import temporal
+
+    df = pd.read_csv(a.out / "features_clustered.csv")
+    summary = json.loads((a.out / "summary.json").read_text())
+    feats = temporal.PATTERN_FEATURES
+    monthly = temporal.monthly_summary(df, list(feats))
+    monthly.round(2).to_csv(a.out / "monthly_summary.csv")
+    temporal.diel_contrast(df, list(feats)).to_csv(a.out / "diel_night_minus_day.csv")
+    fig = a.out / "figures"
+    plots.plot_monthly(monthly, feats, fig / "monthly.png", units=summary.get("units", "dB re FS"))
+    grids = {f: temporal.month_hour_grid(df, f) for f in ["fin_excess", "blue_excess", "var_200_2k", "b_1k_8k"]}
+    plots.plot_month_hour(grids, fig / "month_hour.png")
+    shares = pd.crosstab(temporal.add_time_columns(df)["year_month"], df["cluster"], normalize="index")
+    shares.round(3).to_csv(a.out / "cluster_share_by_month.csv")
+    log.info("monthly medians:\n%s", monthly[[f"{f}_median" for f in feats] + ["n_windows"]].round(1))
 
 
 def cmd_recluster(a):
@@ -303,6 +328,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--out", type=Path, required=True)
     s.add_argument("--station", default="46042", help="NDBC station id (46042 = Monterey Bay)")
     s.set_defaults(func=cmd_wind)
+
+    s = sub.add_parser("patterns", help="seasonal (monthly) and diel (hour-of-day) summaries of a run")
+    s.add_argument("--out", type=Path, required=True)
+    s.set_defaults(func=cmd_patterns)
 
     s = sub.add_parser("recluster", help="re-run clustering on an existing output dir")
     common(s)

@@ -147,3 +147,37 @@ def plot_wind_vs_noise(df: pd.DataFrame, path: Path, feature: str = "b_1k_8k",
     a2.set_title(f"Spearman r = {r:.2f}" if r is not None else "Noise vs wind")
     a2.legend(fontsize=8)
     _save(fig, path)
+
+
+def plot_monthly(summary: pd.DataFrame, features: dict[str, str], path: Path, units: str = "dB re FS"):
+    """One panel per feature: monthly median with interquartile band."""
+    n = len(features)
+    fig, axes = plt.subplots(n, 1, figsize=(10, 2.1 * n), sharex=True)
+    x = np.arange(len(summary))
+    for ax, (f, desc) in zip(np.atleast_1d(axes), features.items()):
+        ax.fill_between(x, summary[f"{f}_q25"], summary[f"{f}_q75"], alpha=0.25, color="tab:blue")
+        ax.plot(x, summary[f"{f}_median"], "o-", color="tab:blue", ms=4)
+        unit = "dB" if "excess" in f or f.startswith("var_") else units
+        ax.set_ylabel(unit, fontsize=8)
+        ax.set_title(f"{f}: {desc}", fontsize=9, loc="left")
+        ax.grid(alpha=0.3)
+    ax.set_xticks(x)
+    ax.set_xticklabels(summary.index, rotation=45, ha="right", fontsize=8)
+    fig.suptitle("Monthly median and interquartile range", fontsize=11)
+    _save(fig, path)
+
+
+def plot_month_hour(grids: dict[str, pd.DataFrame], path: Path):
+    """Heatmaps of feature medians, month (rows) x local hour (columns)."""
+    n = len(grids)
+    fig, axes = plt.subplots(1, n, figsize=(4.2 * n, 4.2), squeeze=False)
+    for ax, (name, g) in zip(axes[0], grids.items()):
+        m = ax.imshow(g.to_numpy(), aspect="auto", cmap="viridis", origin="upper")
+        ax.set_yticks(range(len(g.index)))
+        ax.set_yticklabels(g.index, fontsize=7)
+        ax.set_xticks(range(0, 24, 4))
+        ax.set_xticklabels(range(0, 24, 4))
+        ax.set_xlabel("Local hour (Pacific time)")
+        ax.set_title(name, fontsize=9)
+        fig.colorbar(m, ax=ax, fraction=0.05)
+    _save(fig, path)

@@ -9,6 +9,7 @@ reading a 60 s window only transfers that window (~3 MB).
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,14 +44,18 @@ def _s3():
     return s3fs.S3FileSystem(anon=True)
 
 
+@functools.lru_cache(maxsize=64)
+def _list_month(year: int, month: int, bucket: str) -> tuple[str, ...]:
+    return tuple(sorted(_s3().glob(f"{bucket}/{year:04d}/{month:02d}/*.wav")))
+
+
 def list_mbari_files(year: int, month: int, bucket: str = MBARI_BUCKET_16K) -> list[str]:
     """List the daily WAV files available for a given month.
 
     Returns S3 keys like ``pacific-sound-16khz/2018/11/MARS-20181101T000000Z-16kHz.wav``.
     We glob instead of hard-coding the name so small naming changes don't break us.
     """
-    fs = _s3()
-    return sorted(fs.glob(f"{bucket}/{year:04d}/{month:02d}/*.wav"))
+    return list(_list_month(year, month, bucket))   # cached: one listing per month per process
 
 
 def find_mbari_file(date: dt.date, bucket: str = MBARI_BUCKET_16K) -> str:

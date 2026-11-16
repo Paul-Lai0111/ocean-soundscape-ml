@@ -181,3 +181,20 @@ def test_calibrated_flag_rejects_dates_outside_deployment():
 
     with pytest.raises(SystemExit):
         pipeline.main(["mbari", "--dates", "2016-01-01", "--calibrated", "--out", "unused"])
+
+
+def test_temporal_local_hour_handles_daylight_saving():
+    import pandas as pd
+
+    from oceansound import temporal
+
+    df = pd.DataFrame({"start_time": ["2018-07-01 19:00:00+00:00",   # PDT, UTC-7 -> 12:00
+                                      "2019-01-01 20:00:00+00:00",   # PST, UTC-8 -> 12:00
+                                      "2019-01-02 06:00:00+00:00"],  # PST -> 22:00 previous day
+                       "fin_excess": [1.0, 5.0, 9.0]})
+    d = temporal.add_time_columns(df)
+    assert d["local_hour"].tolist() == [12, 12, 22]
+    m = temporal.monthly_summary(df, ["fin_excess"])
+    assert m.loc["2019-01", "fin_excess_median"] == 7.0 and m.loc["2018-07", "n_windows"] == 1
+    c = temporal.diel_contrast(df, ["fin_excess"])
+    assert c.loc["2019-01", "fin_excess"] == 4.0                     # night 9 - day 5
