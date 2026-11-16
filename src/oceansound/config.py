@@ -7,6 +7,8 @@ PCA downstream takes care of the redundancy.
 
 from __future__ import annotations
 
+import math
+
 # --- MBARI Pacific Sound (MARS cabled observatory, Monterey Bay) -------------
 # Public AWS Open Data buckets, no credentials needed (anonymous access).
 # 16 kHz is the decimated product: one WAV file per UTC day.
@@ -56,3 +58,19 @@ FEATURE_SETS: dict[str, list[str] | None] = {
     "relative": ["fin_excess", "blue_excess", "var_10_100", "var_200_2k",
                  "p90_minus_med_200_2k", "kurtosis"],
 }
+
+# --- Calibration (MBARI MARS hydrophone, deployment 02) ---------------------
+# Source: MBARI_MARS_Hydrophone_Deployment02.json (bitbucket.org/mbari/pacific-sound),
+# referenced in every 16 kHz WAV header from 2017-06 to 2024-08.
+# Instrument: Ocean Sonics icListen HF SN 1689, Reson TC4059-1 element, 890 m depth.
+# Lab calibration 2017-02-02: -177.9 dB re V/uPa at 250 Hz, -176.8 at 10 kHz.
+# MBARI's tutorial converts float samples to volts with x * 3, then removes the
+# sensitivity. In dB that is +20*log10(3) - sensitivity. We use the 250 Hz value,
+# which MBARI also applies below 250 Hz (where the whale bands are); across 10 Hz-8 kHz
+# the sensitivity varies by at most 1.1 dB, so the constant is within ~0.55 dB.
+MARS_DEP02_START = "2017-06-13"
+MARS_DEP02_END = "2024-08-07"
+MARS_DEP02_SENSITIVITY_DB = -177.9          # dB re 1 V/uPa at 250 Hz
+MARS_VOLTS_PER_UNIT = 3.0                   # float sample -> volts (MBARI tutorial)
+MARS_DEP02_CALIBRATION_DB = round(20 * math.log10(MARS_VOLTS_PER_UNIT)
+                                  - MARS_DEP02_SENSITIVITY_DB, 2)   # = 187.44

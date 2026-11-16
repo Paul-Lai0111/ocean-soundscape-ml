@@ -34,7 +34,8 @@ import pandas as pd
 
 from . import plots
 from .clustering import cluster_features, describe_clusters, evaluate_against_labels
-from .config import DEFAULT_N_SEGMENTS, DEFAULT_SEG_SECONDS, FEATURE_SETS
+from .config import (DEFAULT_N_SEGMENTS, DEFAULT_SEG_SECONDS, FEATURE_SETS, MARS_DEP02_CALIBRATION_DB,
+                     MARS_DEP02_END, MARS_DEP02_START)
 from .data import Segment
 from .features import extract, log_freq_grid
 
@@ -86,8 +87,12 @@ def feature_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c not in drop]
 
 
+def units_for(calibration_db: float) -> str:
+    return "dB re 1 µPa" if calibration_db else "dB re FS"
+
+
 def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0,
-            feature_set: str = "all", clip: float | None = None) -> dict:
+            feature_set: str = "all", clip: float | None = None, calibration_db: float = 0.0) -> dict:
     """Cluster saved features and write tables, figures and a summary JSON."""
     df, ltsa, thumbs, freqs = load_features(out)
     order = np.argsort(df["start_time"].to_numpy(), kind="stable")
@@ -119,6 +124,8 @@ def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0,
         "k": int(res.k),
         "silhouette_by_k": {str(kk): round(v, 4) for kk, v in res.silhouette_by_k.items()},
         "pca_explained_variance": [round(float(v), 4) for v in res.explained_variance],
+        "calibration_db": calibration_db,
+        "units": units_for(calibration_db),
         "feature_set": feature_set,
         "clip_quantile": clip,
         "features": cols,
@@ -133,8 +140,9 @@ def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0,
         log.info("ARI vs ground truth: %.3f\n%s", ari, table)
 
     fig = out / "figures"
-    plots.plot_ltsa(ltsa, freqs, df["start_time"], fig / "ltsa.png")
-    plots.plot_band_levels(df, fig / "band_levels.png")
+    units = units_for(calibration_db)
+    plots.plot_ltsa(ltsa, freqs, df["start_time"], fig / "ltsa.png", units=units)
+    plots.plot_band_levels(df, fig / "band_levels.png", units=units)
     plots.plot_pca(res.pca_coords, res.labels, fig / "pca_clusters.png",
                    df["label"].to_numpy() if has_labels else None)
     plots.plot_silhouette(res.silhouette_by_k, res.k, fig / "silhouette.png")
@@ -161,11 +169,17 @@ def cmd_synthetic(a):
 def cmd_mbari(a):
     from .data import stream_mbari_day
 
+    if a.calibrated:
+        bad = [d for d in a.dates if not (MARS_DEP02_START <= d <= MARS_DEP02_END)]
+        if bad:
+            raise SystemExit(f"--calibrated uses the 2017-06-13..2024-08-07 hydrophone calibration; "
+                             f"outside that period: {bad}")
+        a.calibration_db = MARS_DEP02_CALIBRATION_DB
     cache = a.out / "cache"
     parts = []
     for d in a.dates:
         date = dt.date.fromisoformat(d)
-        tag = f"_{date:%Y%m%d}"
+        tag = f"_{date:%Y%m%d}" + (f"_cal{a.calibration_db:g}" if a.calibration_db else "")
         if (cache / f"features{tag}.csv").exists() and not a.force:
             log.info("%s: using cache", date)
         else:
@@ -177,7 +191,7 @@ def cmd_mbari(a):
 
     df = pd.concat([p[0] for p in parts], ignore_index=True)
     save_features(a.out, df, np.concatenate([p[1] for p in parts]), np.concatenate([p[2] for p in parts]))
-    analyse(a.out, a.seg_seconds, a.k, a.seed, a.features, a.clip)
+    analyse(a.out, a.seg_seconds, a.k, a.seed, a.features, a.clip, a.calibration_db)
 
 
 def cmd_local(a):
@@ -185,7 +199,7 @@ def cmd_local(a):
 
     segs = stream_local_wavs([Path(p) for p in a.wavs], a.n_segments, a.seg_seconds)
     save_features(a.out, *extract_all(segs, a.calibration_db))
-    analyse(a.out, a.seg_seconds, a.k, a.seed, a.features, a.clip)
+    analyse(a.out, a.seg_seconds, a.k, a.seed, a.features, a.clip, a.calibration_db)
 
 
 def cmd_list(a):
@@ -210,9 +224,10 @@ def cmd_wind(a):
     corr = environment.wind_correlations(j, cols)
     corr.round(4).to_csv(a.out / "wind_correlations.csv")
     r = float(corr.loc["b_1k_8k", "spearman_r"])
-    plots.plot_wind_vs_noise(j, a.out / "figures" / "wind_vs_noise.png", station=a.station, r=r)
-
     summary = json.loads((a.out / "summary.json").read_text())
+    plots.plot_wind_vs_noise(j, a.out / "figures" / "wind_vs_noise.png", station=a.station, r=r,
+                             units=summary.get("units", "dB re FS"))
+
     summary["wind"] = {
         "station": a.station,
         "n_matched": int(j["wind_ms"].notna().sum()),
@@ -233,7 +248,8 @@ def cmd_recluster(a):
         for name in ["features.csv", "spectra.npz", "summary.json"]:
             shutil.copy(a.src / name, a.out / name)
     summary = json.loads((a.out / "summary.json").read_text())
-    analyse(a.out, summary["seg_seconds"], a.k, a.seed, a.features, a.clip)
+    analyse(a.out, summary["seg_seconds"], a.k, a.seed, a.features, a.clip,
+            summary.get("calibration_db", 0.0))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -266,6 +282,9 @@ def build_parser() -> argparse.ArgumentParser:
     common(s)
     windows(s)
     s.add_argument("--dates", nargs="+", required=True, help="UTC dates, YYYY-MM-DD")
+    s.add_argument("--calibrated", action="store_true",
+                   help=f"report dB re 1 µPa using MBARI's deployment-02 hydrophone calibration "
+                        f"(+{MARS_DEP02_CALIBRATION_DB} dB; valid {MARS_DEP02_START}..{MARS_DEP02_END})")
     s.add_argument("--force", action="store_true", help="ignore cached days")
     s.set_defaults(func=cmd_mbari)
 

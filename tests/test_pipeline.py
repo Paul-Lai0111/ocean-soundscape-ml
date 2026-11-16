@@ -161,3 +161,23 @@ def test_read_window_and_listening_prep_local():
         assert np.allclose(y, x[5 * FS:8 * FS], atol=1e-6)
         z, play_fs = for_listening(y, fs, speedup=10)
         assert play_fs == 10 * FS and abs(np.max(np.abs(z)) - 0.9) < 1e-6
+
+
+def test_mars_calibration_constant_matches_mbari_recipe():
+    """MBARI: volts = x * 3, PSD_dB re uPa = 10log10(PSD_volts) - sensitivity."""
+    from oceansound.config import MARS_DEP02_CALIBRATION_DB, MARS_DEP02_SENSITIVITY_DB
+
+    x = make_segment("ambient", FS, 10, np.random.default_rng(0))
+    ours = extract(x, FS, calibration_db=MARS_DEP02_CALIBRATION_DB).features["b_10_100"]
+    from scipy import signal
+
+    f, p = signal.welch((x - x.mean()).astype(np.float64) * 3, fs=FS, nperseg=FS, noverlap=FS // 2)
+    ref = band_level_db(f, p, 10, 100) - MARS_DEP02_SENSITIVITY_DB
+    assert abs(ours - ref) < 0.01
+
+
+def test_calibrated_flag_rejects_dates_outside_deployment():
+    import pytest
+
+    with pytest.raises(SystemExit):
+        pipeline.main(["mbari", "--dates", "2016-01-01", "--calibrated", "--out", "unused"])

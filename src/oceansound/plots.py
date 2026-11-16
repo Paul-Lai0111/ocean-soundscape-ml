@@ -23,7 +23,8 @@ def _save(fig, path: Path):
     plt.close(fig)
 
 
-def plot_ltsa(ltsa: np.ndarray, freqs: np.ndarray, times: pd.Series, path: Path, title: str = "LTSA"):
+def plot_ltsa(ltsa: np.ndarray, freqs: np.ndarray, times: pd.Series, path: Path, title: str = "LTSA",
+              units: str = "dB re FS"):
     """Long-term spectral average: one column per window, log-frequency axis."""
     fig, ax = plt.subplots(figsize=(11, 4))
     x = np.arange(len(times))
@@ -36,16 +37,16 @@ def plot_ltsa(ltsa: np.ndarray, freqs: np.ndarray, times: pd.Series, path: Path,
     ax.set_xticklabels([pd.Timestamp(t).strftime("%m-%d %H:%M") for t in times.iloc[::step]],
                        rotation=30, ha="right", fontsize=8)
     ax.set_title(title)
-    fig.colorbar(m, ax=ax, label="PSD (dB/Hz)")
+    fig.colorbar(m, ax=ax, label=f"PSD ({units}/Hz)" if "uPa" not in units else "PSD (dB re 1 µPa²/Hz)")
     _save(fig, path)
 
 
-def plot_band_levels(df: pd.DataFrame, path: Path):
+def plot_band_levels(df: pd.DataFrame, path: Path, units: str = "dB re FS"):
     fig, ax = plt.subplots(figsize=(11, 4))
     x = np.arange(len(df))
     for name in ["b_10_100", "b_100_1k", "b_1k_8k", "fin_17_25", "blue_40_50"]:
         ax.plot(x, df[name], marker=".", lw=1, label=f"{name}  ({BANDS[name][0]:g}-{BANDS[name][1]:g} Hz)")
-    ax.set_ylabel("Band level (dB)")
+    ax.set_ylabel(f"Band level ({units})")
     ax.set_xlabel("Window index (time order)")
     ax.legend(fontsize=8, ncol=2)
     ax.set_title("Band levels over time")
@@ -124,13 +125,13 @@ def plot_cluster_examples(thumbs: np.ndarray, freqs: np.ndarray, clusters: np.nd
 
 
 def plot_wind_vs_noise(df: pd.DataFrame, path: Path, feature: str = "b_1k_8k",
-                       station: str = "46042", r: float | None = None):
+                       station: str = "46042", r: float | None = None, units: str = "dB re FS"):
     """Left: feature and buoy wind over time. Right: feature vs wind, coloured by cluster."""
     d = df.dropna(subset=["wind_ms"]).sort_values("start_time")
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4), gridspec_kw={"width_ratios": [2, 1]})
     t = pd.to_datetime(d["start_time"])
-    a1.plot(t, d[feature], ".-", lw=0.8, ms=3, color="tab:blue", label=f"{feature} (dB re FS)")
-    a1.set_ylabel(f"{feature} (dB re FS)", color="tab:blue")
+    a1.plot(t, d[feature], ".-", lw=0.8, ms=3, color="tab:blue", label=f"{feature} ({units})")
+    a1.set_ylabel(f"{feature} ({units})", color="tab:blue")
     b1 = a1.twinx()
     b1.plot(t, d["wind_ms"], "-", lw=1.2, color="tab:orange", label="wind")
     b1.set_ylabel(f"Wind speed, NDBC {station} (m/s)", color="tab:orange")
@@ -142,7 +143,7 @@ def plot_wind_vs_noise(df: pd.DataFrame, path: Path, feature: str = "b_1k_8k",
         s = d[d["cluster"] == k]
         a2.scatter(s["wind_ms"], s[feature], s=10, color=cmap(i % 10), label=f"cluster {k}")
     a2.set_xlabel(f"Wind speed, NDBC {station} (m/s)")
-    a2.set_ylabel(f"{feature} (dB re FS)")
+    a2.set_ylabel(f"{feature} ({units})")
     a2.set_title(f"Spearman r = {r:.2f}" if r is not None else "Noise vs wind")
     a2.legend(fontsize=8)
     _save(fig, path)
