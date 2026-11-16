@@ -1,0 +1,43 @@
+{
+  "n_windows": 100,
+  "seg_seconds": 60,
+  "k": 5,
+  "silhouette_by_k": {
+    "2": 0.4367,
+    "3": 0.5541,
+    "4": 0.689,
+    "5": 0.7757,
+    "6": 0.7336,
+    "7": 0.6866,
+    "8": 0.6395
+  },
+  "pca_explained_variance": [
+    0.4333,
+    0.2757,
+    0.1701,
+    0.0966
+  ],
+  "features": [
+    "broadband_db",
+    "b_10_100",
+    "b_100_1k",
+    "b_1k_8k",
+    "fin_17_25",
+    "blue_40_50",
+    "hump_200_2k",
+    "fin_excess",
+    "blue_excess",
+    "centroid_log10_hz",
+    "flatness_db",
+    "low_minus_high_db",
+    "var_10_100",
+    "var_200_2k",
+    "p90_minus_med_200_2k",
+    "kurtosis"
+  ],
+  "time_range": [
+    "2000-01-01 00:00:00+00:00",
+    "2000-01-03 01:30:00+00:00"
+  ],
+  "adjusted_rand_index": 1.0
+}
