@@ -19,6 +19,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from oceansound.config import BANDS  # noqa: E402
+from oceansound.data import file_offset_seconds, for_listening, read_window  # noqa: E402
 
 st.set_page_config(page_title="Ocean Soundscape Explorer", layout="wide")
 PALETTE = px.colors.qualitative.Set2
@@ -37,6 +38,12 @@ def load_run(out: str):
     conf = out / "confusion_true_vs_cluster.csv"
     conf = pd.read_csv(conf, index_col=0) if conf.exists() else None
     return df, z["ltsa"][idx], z["thumbs"][idx].astype(np.float32), z["freqs"], summary, summ, conf
+
+
+@st.cache_data(show_spinner="Streaming audio from MBARI S3...", max_entries=32)
+def load_audio(source: str, start_time: pd.Timestamp, seconds: float):
+    offset = file_offset_seconds(source, start_time.to_pydatetime())
+    return read_window(source, offset, seconds)
 
 
 # ---------------------------------------------------------------- sidebar ---
@@ -137,6 +144,23 @@ with tab_inspect:
         st.markdown(f"**Start (UTC):** {df.loc[row, 'start_time']:%Y-%m-%d %H:%M:%S}  \n"
                     f"**Source:** {df.loc[row, 'source']}  \n"
                     f"**True label:** {df.loc[row, 'label'] if pd.notna(df.loc[row, 'label']) else 'n/a'}")
+        st.markdown("**Listen**")
+        speed = st.radio("Playback speed", [1, 4, 10], index=2, horizontal=True,
+                         format_func=lambda v: f"{v}x",
+                         help="Whale calls at 15-50 Hz are hard to hear on normal speakers. "
+                              "Speeding up raises every frequency: at 10x, 20 Hz becomes 200 Hz.")
+        source = str(df.loc[row, "source"])
+        if source == "synthetic":
+            st.caption("Synthetic windows are not stored as audio.")
+        elif st.button("Load audio", key=f"play_{sid}"):
+            try:
+                x, fs = load_audio(source, pd.Timestamp(df.loc[row, "start_time"]), summary["seg_seconds"])
+                y, play_fs = for_listening(x, fs, speed)
+                st.audio(y, sample_rate=play_fs)
+                st.caption(f"{len(x) / fs:.0f} s at {fs} Hz, played at {speed}x "
+                           f"({len(x) / fs / speed:.0f} s). Peak-normalized.")
+            except Exception as e:  # noqa: BLE001 - show the problem instead of crashing the page
+                st.error(f"Could not load audio: {e}")
     with c2:
         T = thumbs[row]
         t = np.linspace(0, summary["seg_seconds"], T.shape[1])

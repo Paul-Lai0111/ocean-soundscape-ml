@@ -142,3 +142,22 @@ def test_relative_feature_set_end_to_end():
         # Without absolute levels, ambient and ship look alike (both lack calls and pulses),
         # so the clean synthetic classes are recovered less well than with "all" features.
         assert s["adjusted_rand_index"] > 0.5
+
+
+def test_read_window_and_listening_prep_local():
+    import datetime as dt
+
+    from oceansound.data import file_offset_seconds, for_listening, read_window
+
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "TEST-20200101T000000Z.wav"
+        x = make_segment("ambient", FS, 20, np.random.default_rng(3))
+        sf.write(p, x, FS, subtype="PCM_24")
+        start = dt.datetime(2020, 1, 1, 0, 0, 5, tzinfo=dt.timezone.utc)
+        off = file_offset_seconds(str(p), start)
+        assert off == 5.0
+        y, fs = read_window(str(p), off, 3)
+        assert fs == FS and y.size == 3 * FS
+        assert np.allclose(y, x[5 * FS:8 * FS], atol=1e-6)
+        z, play_fs = for_listening(y, fs, speedup=10)
+        assert play_fs == 10 * FS and abs(np.max(np.abs(z)) - 0.9) < 1e-6

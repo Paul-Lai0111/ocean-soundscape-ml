@@ -143,3 +143,43 @@ def fetch_ndbc_stdmet(station: str, year: int, cache_dir: Path = Path("data/ndbc
         urllib.request.urlretrieve(NDBC_URL.format(station=station, year=year), tmp)
         tmp.rename(path)
     return path
+
+
+def file_offset_seconds(source: str, start_time: dt.datetime) -> float:
+    """Seconds from the start of ``source`` (parsed from its name) to ``start_time``."""
+    t0 = _file_start_time(Path(source).name)
+    if t0 is None:
+        raise ValueError(f"cannot parse a start time from {source!r}")
+    return (start_time - t0).total_seconds()
+
+
+def read_window(source: str, offset_s: float, seconds: float) -> tuple[np.ndarray, int]:
+    """Re-read one window of audio for playback.
+
+    ``source`` is either an S3 key from the MBARI bucket (as stored in features.csv)
+    or a local file path. Returns (samples as float32, sample rate).
+    """
+    local = Path(source)
+    if local.exists():
+        opener = lambda: open(local, "rb")  # noqa: E731
+    elif source.startswith(("pacific-sound-", "s3://")):
+        opener = lambda: _s3().open(source.removeprefix("s3://"), "rb", block_size=2**22)  # noqa: E731
+    else:
+        raise FileNotFoundError(f"audio for {source!r} is not available (synthetic or moved file)")
+    with opener() as f, sf.SoundFile(f) as snd:
+        fs = snd.samplerate
+        snd.seek(max(0, int(round(offset_s * fs))))
+        x = snd.read(int(seconds * fs), dtype="float32", always_2d=True)[:, 0]
+    return x, fs
+
+
+def for_listening(x: np.ndarray, fs: int, speedup: float = 1.0) -> tuple[np.ndarray, int]:
+    """Prepare audio for human listening: remove DC, peak-normalize, optionally speed up.
+
+    Playing ``speedup`` times faster raises every frequency by that factor, so the
+    20 Hz fin whale pulses become 200 Hz at 10x - the usual way to listen to
+    large-whale calls on ordinary speakers.
+    """
+    y = x.astype(np.float64) - float(np.mean(x))
+    peak = float(np.max(np.abs(y))) or 1.0
+    return (0.9 * y / peak).astype(np.float32), int(round(fs * speedup))
