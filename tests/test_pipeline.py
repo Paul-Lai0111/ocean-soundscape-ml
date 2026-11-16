@@ -67,3 +67,21 @@ def test_local_wav_reader_windows():
         assert all(s.samples.size == 5 * FS for s in segs)
         assert segs[0].start_time.year == 2020
         assert segs[-1].meta["offset_s"] == 15.0
+
+
+def test_zero_filled_gap_is_rejected_and_skipped():
+    """MBARI fills recording gaps with zeros; those windows must be skipped, not produce inf/NaN."""
+    import pytest
+
+    from oceansound.data import Segment
+    from oceansound.features import RecordingGap
+
+    with pytest.raises(RecordingGap):
+        extract(np.zeros(FS * 10, dtype=np.float32), FS)
+
+    good = make_segment("ambient", FS, 10, np.random.default_rng(0))
+    segs = [Segment(f"s{i}", "t", None, FS, x) for i, x in
+            enumerate([good, np.zeros_like(good), good])]
+    df, ltsa, thumbs = pipeline.extract_all(segs)
+    assert list(df["segment_id"]) == ["s0", "s2"]
+    assert np.isfinite(df[pipeline.feature_columns(df)].to_numpy(dtype=float)).all()

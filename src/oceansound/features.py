@@ -25,6 +25,15 @@ from .config import BANDS, EXCESS_BANDS, FMAX, FMIN, N_LOG_FREQ_BINS, THUMB_TIME
 
 EPS = 1e-20
 
+# Recording gaps in the MBARI archive are filled with exact zeros (e.g. ~10 h on
+# 2018-11-07). Real 24-bit hydrophone audio is essentially never exactly 0, so
+# a window with more than this fraction of zero samples is treated as a gap.
+MAX_ZERO_FRACTION = 0.01
+
+
+class RecordingGap(ValueError):
+    """Raised for windows that are (mostly) zero-filled recording gaps."""
+
 
 @dataclass
 class SegmentFeatures:
@@ -68,6 +77,9 @@ def extract(x: np.ndarray, fs: int, calibration_db: float = 0.0) -> SegmentFeatu
     calibration_db : added to every level (0 -> dB re full scale)
     """
     x = np.asarray(x, dtype=np.float64)
+    zero_frac = float(np.mean(x == 0)) if x.size else 1.0
+    if zero_frac > MAX_ZERO_FRACTION:
+        raise RecordingGap(f"{zero_frac:.0%} of samples are exactly zero (recording gap)")
     x = x - x.mean()
     feats: dict[str, float] = {}
 

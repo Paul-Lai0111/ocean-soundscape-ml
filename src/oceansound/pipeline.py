@@ -93,6 +93,14 @@ def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0) 
     df, ltsa, thumbs = df.iloc[order].reset_index(drop=True), ltsa[order], thumbs[order]
 
     cols = feature_columns(df)
+    # Safety net: drop windows with non-finite features (e.g. features cached
+    # before gap detection existed) instead of crashing in StandardScaler.
+    finite = np.isfinite(df[cols].to_numpy(dtype=float)).all(axis=1)
+    n_dropped = int((~finite).sum())
+    if n_dropped:
+        log.warning("dropping %d windows with non-finite features: %s", n_dropped,
+                    ", ".join(df.loc[~finite, "segment_id"].astype(str)))
+        df, ltsa, thumbs = df[finite].reset_index(drop=True), ltsa[finite], thumbs[finite]
     res = cluster_features(df, cols, k=k, seed=seed)
     df["cluster"] = res.labels
     for i in range(min(3, res.pca_coords.shape[1])):
@@ -104,6 +112,7 @@ def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0) 
 
     summary = {
         "n_windows": int(len(df)),
+        "n_dropped_nonfinite": n_dropped,
         "seg_seconds": seg_seconds,
         "k": int(res.k),
         "silhouette_by_k": {str(kk): round(v, 4) for kk, v in res.silhouette_by_k.items()},
