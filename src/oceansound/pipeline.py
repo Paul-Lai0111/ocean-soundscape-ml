@@ -34,7 +34,7 @@ import pandas as pd
 
 from . import plots
 from .clustering import cluster_features, describe_clusters, evaluate_against_labels
-from .config import DEFAULT_N_SEGMENTS, DEFAULT_SEG_SECONDS
+from .config import DEFAULT_N_SEGMENTS, DEFAULT_SEG_SECONDS, FEATURE_SETS
 from .data import Segment
 from .features import extract, log_freq_grid
 
@@ -86,28 +86,30 @@ def feature_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c not in drop]
 
 
-def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0) -> dict:
+def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0,
+            feature_set: str = "all", clip: float | None = None) -> dict:
     """Cluster saved features and write tables, figures and a summary JSON."""
     df, ltsa, thumbs, freqs = load_features(out)
     order = np.argsort(df["start_time"].to_numpy(), kind="stable")
     df, ltsa, thumbs = df.iloc[order].reset_index(drop=True), ltsa[order], thumbs[order]
 
-    cols = feature_columns(df)
+    all_cols = feature_columns(df)
+    cols = FEATURE_SETS[feature_set] or all_cols
     # Safety net: drop windows with non-finite features (e.g. features cached
     # before gap detection existed) instead of crashing in StandardScaler.
-    finite = np.isfinite(df[cols].to_numpy(dtype=float)).all(axis=1)
+    finite = np.isfinite(df[all_cols].to_numpy(dtype=float)).all(axis=1)
     n_dropped = int((~finite).sum())
     if n_dropped:
         log.warning("dropping %d windows with non-finite features: %s", n_dropped,
                     ", ".join(df.loc[~finite, "segment_id"].astype(str)))
         df, ltsa, thumbs = df[finite].reset_index(drop=True), ltsa[finite], thumbs[finite]
-    res = cluster_features(df, cols, k=k, seed=seed)
+    res = cluster_features(df, cols, k=k, seed=seed, clip_quantile=clip)
     df["cluster"] = res.labels
     for i in range(min(3, res.pca_coords.shape[1])):
         df[f"PC{i + 1}"] = res.pca_coords[:, i]
 
     df.to_csv(out / "features_clustered.csv", index=False)
-    describe_clusters(df, cols).round(2).to_csv(out / "cluster_summary.csv")
+    describe_clusters(df, all_cols).round(2).to_csv(out / "cluster_summary.csv")
     res.loadings.round(3).to_csv(out / "pca_loadings.csv")
 
     summary = {
@@ -117,6 +119,8 @@ def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0) 
         "k": int(res.k),
         "silhouette_by_k": {str(kk): round(v, 4) for kk, v in res.silhouette_by_k.items()},
         "pca_explained_variance": [round(float(v), 4) for v in res.explained_variance],
+        "feature_set": feature_set,
+        "clip_quantile": clip,
         "features": cols,
         "time_range": [str(df["start_time"].min()), str(df["start_time"].max())],
     }
@@ -151,7 +155,7 @@ def cmd_synthetic(a):
 
     segs = synthetic_segments(a.n_per_class, seconds=a.seg_seconds, seed=a.seed)
     save_features(a.out, *extract_all(segs))
-    analyse(a.out, a.seg_seconds, a.k, a.seed)
+    analyse(a.out, a.seg_seconds, a.k, a.seed, a.features, a.clip)
 
 
 def cmd_mbari(a):
@@ -173,7 +177,7 @@ def cmd_mbari(a):
 
     df = pd.concat([p[0] for p in parts], ignore_index=True)
     save_features(a.out, df, np.concatenate([p[1] for p in parts]), np.concatenate([p[2] for p in parts]))
-    analyse(a.out, a.seg_seconds, a.k, a.seed)
+    analyse(a.out, a.seg_seconds, a.k, a.seed, a.features, a.clip)
 
 
 def cmd_local(a):
@@ -181,7 +185,7 @@ def cmd_local(a):
 
     segs = stream_local_wavs([Path(p) for p in a.wavs], a.n_segments, a.seg_seconds)
     save_features(a.out, *extract_all(segs, a.calibration_db))
-    analyse(a.out, a.seg_seconds, a.k, a.seed)
+    analyse(a.out, a.seg_seconds, a.k, a.seed, a.features, a.clip)
 
 
 def cmd_list(a):
@@ -191,9 +195,45 @@ def cmd_list(a):
         print(key)
 
 
-def cmd_recluster(a):
+def cmd_wind(a):
+    """Join buoy wind to an existing run and test the sea-state interpretation."""
+    from . import environment
+    from .data import fetch_ndbc_stdmet
+
+    df = pd.read_csv(a.out / "features_clustered.csv", parse_dates=["start_time"])
+    t = pd.to_datetime(df["start_time"], utc=True)
+    years = range(t.min().year, t.max().year + 1)
+    env = pd.concat([environment.read_ndbc_stdmet(fetch_ndbc_stdmet(a.station, y)) for y in years])
+    j = environment.join_nearest(df, env)
+    j.to_csv(a.out / "features_wind.csv", index=False)
+    cols = [c for c in feature_columns(df)]
+    corr = environment.wind_correlations(j, cols)
+    corr.round(4).to_csv(a.out / "wind_correlations.csv")
+    r = float(corr.loc["b_1k_8k", "spearman_r"])
+    plots.plot_wind_vs_noise(j, a.out / "figures" / "wind_vs_noise.png", station=a.station, r=r)
+
     summary = json.loads((a.out / "summary.json").read_text())
-    analyse(a.out, summary["seg_seconds"], a.k, a.seed)
+    summary["wind"] = {
+        "station": a.station,
+        "n_matched": int(j["wind_ms"].notna().sum()),
+        "spearman_b_1k_8k": round(r, 3),
+        "wind_ms_median_by_cluster": {str(k): round(float(v), 2) for k, v in
+                                      j.groupby("cluster")["wind_ms"].median().items()},
+    }
+    (a.out / "summary.json").write_text(json.dumps(summary, indent=2))
+    log.info("wind vs b_1k_8k: Spearman r=%.3f (n=%d)\n%s", r, summary["wind"]["n_matched"],
+             corr.head(8).round(3))
+
+
+def cmd_recluster(a):
+    if a.src:  # start a new run directory from an existing run's features
+        import shutil
+
+        a.out.mkdir(parents=True, exist_ok=True)
+        for name in ["features.csv", "spectra.npz", "summary.json"]:
+            shutil.copy(a.src / name, a.out / name)
+    summary = json.loads((a.out / "summary.json").read_text())
+    analyse(a.out, summary["seg_seconds"], a.k, a.seed, a.features, a.clip)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -205,6 +245,10 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--out", type=Path, required=out_required, help="output directory")
         sp.add_argument("--k", type=int, default=None, help="fix number of clusters (default: pick by silhouette)")
         sp.add_argument("--seed", type=int, default=0)
+        sp.add_argument("--features", choices=sorted(FEATURE_SETS), default="all",
+                        help="feature set for clustering ('relative' is less sensitive to wind)")
+        sp.add_argument("--clip", type=float, default=None,
+                        help="winsorize each feature to [q, 1-q] quantiles before clustering, e.g. 0.01")
 
     def windows(sp):
         sp.add_argument("--n-segments", type=int, default=DEFAULT_N_SEGMENTS, help="windows per file/day")
@@ -236,8 +280,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--month", type=int, required=True)
     s.set_defaults(func=cmd_list)
 
+    s = sub.add_parser("wind", help="compare a run with NOAA buoy wind (needs internet once)")
+    s.add_argument("--out", type=Path, required=True)
+    s.add_argument("--station", default="46042", help="NDBC station id (46042 = Monterey Bay)")
+    s.set_defaults(func=cmd_wind)
+
     s = sub.add_parser("recluster", help="re-run clustering on an existing output dir")
     common(s)
+    s.add_argument("--src", type=Path, default=None,
+                   help="copy features from this run into --out first (keeps the source run intact)")
     s.set_defaults(func=cmd_recluster)
     return p
 

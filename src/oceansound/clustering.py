@@ -28,12 +28,19 @@ class ClusterResult:
 
 
 def cluster_features(df: pd.DataFrame, feature_cols: list[str], k_range=range(2, 9),
-                     k: int | None = None, var_keep: float = 0.95, seed: int = 0) -> ClusterResult:
+                     k: int | None = None, var_keep: float = 0.95, seed: int = 0,
+                     clip_quantile: float | None = None) -> ClusterResult:
     """Cluster the rows of ``df`` using ``feature_cols``.
 
     If ``k`` is None, pick the k in ``k_range`` with the best silhouette score.
+    ``clip_quantile`` (e.g. 0.01) winsorizes each feature to its [q, 1-q] quantiles
+    first, so a single extreme window (an impulse with kurtosis 167, a nearby
+    earthquake) cannot claim a cluster of its own or dominate a principal component.
     """
     X = df[feature_cols].to_numpy(dtype=float)
+    if clip_quantile:
+        lo, hi = np.quantile(X, [clip_quantile, 1 - clip_quantile], axis=0)
+        X = np.clip(X, lo, hi)
     X = StandardScaler().fit_transform(X)
 
     pca = PCA(n_components=var_keep, svd_solver="full", random_state=seed)

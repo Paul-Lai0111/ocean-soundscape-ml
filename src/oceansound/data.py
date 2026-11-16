@@ -118,3 +118,28 @@ def stream_local_wavs(paths: list[Path], n_segments: int = DEFAULT_N_SEGMENTS,
     for p in paths:
         p = Path(p)
         yield from _read_windows(str(p), p.name, seg_seconds, n_segments, _file_start_time(p.name))
+
+
+# ----------------------------------------------------------------------------
+# NOAA NDBC buoy data (wind, waves) for environmental context
+# ----------------------------------------------------------------------------
+
+NDBC_URL = "https://www.ndbc.noaa.gov/data/historical/stdmet/{station}h{year}.txt.gz"
+
+
+def fetch_ndbc_stdmet(station: str, year: int, cache_dir: Path = Path("data/ndbc")) -> Path:
+    """Download (once) a year of NDBC standard meteorological data; return the local path.
+
+    Station 46042 (Monterey Bay, ~27 nm WNW of Monterey) is the closest long-running
+    buoy to the MARS hydrophone.
+    """
+    import urllib.request
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / f"{station}h{year}.txt.gz"
+    if not path.exists():
+        tmp = path.with_suffix(".part")
+        urllib.request.urlretrieve(NDBC_URL.format(station=station, year=year), tmp)
+        tmp.rename(path)
+    return path

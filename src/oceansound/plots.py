@@ -121,3 +121,28 @@ def plot_cluster_examples(thumbs: np.ndarray, freqs: np.ndarray, clusters: np.nd
                 ax.set_xlabel("s")
     fig.suptitle("Example windows per cluster")
     _save(fig, path)
+
+
+def plot_wind_vs_noise(df: pd.DataFrame, path: Path, feature: str = "b_1k_8k",
+                       station: str = "46042", r: float | None = None):
+    """Left: feature and buoy wind over time. Right: feature vs wind, coloured by cluster."""
+    d = df.dropna(subset=["wind_ms"]).sort_values("start_time")
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4), gridspec_kw={"width_ratios": [2, 1]})
+    t = pd.to_datetime(d["start_time"])
+    a1.plot(t, d[feature], ".-", lw=0.8, ms=3, color="tab:blue", label=f"{feature} (dB re FS)")
+    a1.set_ylabel(f"{feature} (dB re FS)", color="tab:blue")
+    b1 = a1.twinx()
+    b1.plot(t, d["wind_ms"], "-", lw=1.2, color="tab:orange", label="wind")
+    b1.set_ylabel(f"Wind speed, NDBC {station} (m/s)", color="tab:orange")
+    a1.set_title("High-frequency noise and wind over time")
+    fig.autofmt_xdate()
+
+    cmap = plt.get_cmap(CMAP)
+    for i, k in enumerate(sorted(d["cluster"].unique())):
+        s = d[d["cluster"] == k]
+        a2.scatter(s["wind_ms"], s[feature], s=10, color=cmap(i % 10), label=f"cluster {k}")
+    a2.set_xlabel(f"Wind speed, NDBC {station} (m/s)")
+    a2.set_ylabel(f"{feature} (dB re FS)")
+    a2.set_title(f"Spearman r = {r:.2f}" if r is not None else "Noise vs wind")
+    a2.legend(fontsize=8)
+    _save(fig, path)

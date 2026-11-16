@@ -85,3 +85,60 @@ def test_zero_filled_gap_is_rejected_and_skipped():
     df, ltsa, thumbs = pipeline.extract_all(segs)
     assert list(df["segment_id"]) == ["s0", "s2"]
     assert np.isfinite(df[pipeline.feature_columns(df)].to_numpy(dtype=float)).all()
+
+
+NDBC_SAMPLE = """#YY  MM DD hh mm WDIR WSPD GST  WVHT   DPD   APD MWD   PRES  ATMP  WTMP  DEWP  VIS  TIDE
+#yr  mo dy hr mn degT m/s  m/s     m   sec   sec degT   hPa  degC  degC  degC   mi    ft
+2018 11 01 00 50 175  2.5  3.1  1.15 10.81  5.90 283 1018.8  13.3  14.0 999.0 99.0 99.00
+2018 11 01 01 50 175 99.0 99.0 99.00 10.81  5.90 283 1018.8  13.3  14.0 999.0 99.0 99.00
+2018 11 01 02 50 163  8.4  9.6  0.98 10.00  5.62 289 1019.0  13.4  14.1 999.0 99.0 99.00
+"""
+
+
+def test_ndbc_parse_and_nearest_join():
+    import gzip
+
+    import pandas as pd
+
+    from oceansound import environment
+
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "46042h2018.txt.gz"
+        p.write_bytes(gzip.compress(NDBC_SAMPLE.encode()))
+        env = environment.read_ndbc_stdmet(p)
+    assert len(env) == 2                      # 99.0 wind = missing, dropped
+    assert env["wind_ms"].tolist() == [2.5, 8.4]
+    windows = pd.DataFrame({"start_time": ["2018-11-01 00:40:00+00:00",   # nearest 00:50
+                                           "2018-11-01 02:30:00+00:00",   # nearest 02:50
+                                           "2018-11-05 00:00:00+00:00"]}) # nothing within 1 h
+    j = environment.join_nearest(windows, env)
+    assert j["wind_ms"].iloc[0] == 2.5 and j["wind_ms"].iloc[1] == 8.4
+    assert np.isnan(j["wind_ms"].iloc[2])
+
+
+def test_clipping_stops_a_single_outlier_owning_a_cluster():
+    import pandas as pd
+
+    from oceansound.clustering import cluster_features
+
+    rng = np.random.default_rng(0)
+    blobs = [rng.normal(m, 1, (50, 3)) for m in ([0, 0, 0], [6, 6, 6], [0, 6, 0])]
+    X = np.vstack(blobs + [[[0, 0, 500]]])                # three groups + one extreme window
+    df = pd.DataFrame(X, columns=["x", "y", "z"])
+    raw = cluster_features(df, ["x", "y", "z"], k=3)
+    clipped = cluster_features(df, ["x", "y", "z"], k=3, clip_quantile=0.01)
+    assert min(np.bincount(raw.labels)) == 1              # outlier takes a cluster, two groups merge
+    assert sorted(np.bincount(clipped.labels)) == [50, 50, 51]
+
+
+def test_relative_feature_set_end_to_end():
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d)
+        pipeline.main(["synthetic", "--n-per-class", "6", "--seg-seconds", "30", "--out", str(out),
+                       "--features", "relative", "--clip", "0.01"])
+        s = json.loads((out / "summary.json").read_text())
+        assert s["feature_set"] == "relative" and s["features"] == [
+            "fin_excess", "blue_excess", "var_10_100", "var_200_2k", "p90_minus_med_200_2k", "kurtosis"]
+        # Without absolute levels, ambient and ship look alike (both lack calls and pulses),
+        # so the clean synthetic classes are recovered less well than with "all" features.
+        assert s["adjusted_rand_index"] > 0.5

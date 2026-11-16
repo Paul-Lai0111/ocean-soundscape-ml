@@ -43,3 +43,16 @@ EXCESS_BANDS: dict[str, tuple[tuple[float, float], list[tuple[float, float]]]] =
     "fin_excess":  ((17, 25), [(11, 15), (28, 34)]),
     "blue_excess": ((40, 50), [(32, 37), (55, 62)]),
 }
+
+# --- Feature sets for clustering ---------------------------------------------
+# "all": every scalar feature. On real data its main axis is wind/sea state,
+#        because absolute levels and spectral shape all rise with wind
+#        (Spearman |r| 0.66-0.84 vs NOAA buoy wind, Nov 2018).
+# "relative": features that compare a band with its own neighbours or with
+#        itself over time, so a uniform rise of the noise floor cancels out.
+#        Wind dependence of the clusters drops from eta^2 0.38 to 0.06.
+FEATURE_SETS: dict[str, list[str] | None] = {
+    "all": None,
+    "relative": ["fin_excess", "blue_excess", "var_10_100", "var_200_2k",
+                 "p90_minus_med_200_2k", "kurtosis"],
+}
