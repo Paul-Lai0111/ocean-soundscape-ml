@@ -25,6 +25,11 @@ the whole year and one minute you can hear; click any minute in the cluster lane
 open it, and press **Listen** to stream that minute from MBARI's archive, sped up 10x so 20 Hz whale
 calls become audible. Sheets and the selected minute are kept in the URL, so a link opens the same view.
 
+New to underwater acoustics? Sheet **G-0, Reading guide** is a six-step tour (listen, read the
+long-term spectrogram, read one minute, how the clusters were made, how each claim was checked,
+what to explore), each step with the real data beside it and a one-question check, followed by a
+handbook of terms, the sheets and common questions.
+
 To run it locally:
 
 ```bash

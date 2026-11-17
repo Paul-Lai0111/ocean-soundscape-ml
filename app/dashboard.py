@@ -35,6 +35,7 @@ PLOT_CONFIG = {"displayModeBar": False, "scrollZoom": False}
 EARTHQUAKE_ID = "MARS-20181102T000000Z-16kHz_032"   # M3.3 Tres Pinos, 2018-11-02 16:19:30 UTC
 
 SHEETS = {
+    "G-0": ("Reading guide", "A six-step tour of this drawing set, and a handbook to keep beside it."),
     "S-1": ("General arrangement", "The whole record, and one minute of it you can hear."),
     "S-2": ("Cluster plan", "How the minutes group, and when each group occurs."),
     "S-3": ("Detail: one minute", "Spectrogram, sound and measured features of any minute."),
@@ -216,6 +217,16 @@ with st.sidebar:
 
 
 # --------------------------------------------------------------- pieces -----
+def go_to(target: str, sid: str | None = None, data: str | None = None):
+    """Button callback: open a sheet, optionally at a minute of a given data set."""
+    if data and data in run_names and data != st.session_state.run:
+        st.session_state.run = data
+        st.session_state.minute_run = data
+    if sid:
+        st.session_state.minute = sid
+    st.session_state.sheet = target
+
+
 def go_sheet():
     if st.session_state.get("sheet_m"):
         st.session_state.sheet = st.session_state.sheet_m
@@ -385,6 +396,213 @@ def schedule_html(rows: list[list[str]], head: list[str], numeric: set[int], hi_
     return f'<table class="{cls}"><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table>'
 
 
+# ---------------------------------------------------------------- guide -----
+TOUR = ["Listen", "Elevation", "Spectrogram", "Clusters", "Evidence", "Explore"]
+
+GLOSSARY = [
+    ("Hydrophone", "An underwater microphone. This one sits on the MARS cabled observatory, 890 m deep in "
+                   "Monterey Bay, and records 16,000 samples per second."),
+    ("dB re 1 µPa", "Sound pressure level in decibels relative to one micropascal, the standard reference in "
+                    "underwater acoustics. +10 dB is ten times the power."),
+    ("Spectrogram", "Frequency against time for one recording: here one minute, with darker ink where a "
+                    "frequency is louder."),
+    ("LTSA", "Long-term spectral average: one averaged spectrum per minute, laid side by side over days or "
+             "months. The elevation on S-1."),
+    ("Band level", "Mean level inside a frequency band, for example 1-8 kHz, where wind-driven surface noise lives."),
+    ("Excess", "Level in a call band minus the level of its neighbours. A whale call is narrow and sticks out; "
+               "wind and ships are broad and cancel."),
+    ("Kurtosis", "How spiky the waveform is. Near 0 for steady noise; large for pulses and earthquakes."),
+    ("PCA", "Principal component analysis: rotates the 16 features into a few directions that keep most of the "
+            "variation. S-2 plots the first two."),
+    ("K-Means", "Groups minutes so each is close to its group's centre. k, the number of groups, is chosen by "
+                "the silhouette score."),
+    ("Silhouette", "From -1 to 1: how much closer a minute is to its own cluster than to the next one."),
+    ("Call index", "MBARI's whale call measure: level at the call frequency divided by the level beside it. "
+                   "1 means no call. Used here only to check the clusters, never to build them."),
+    ("η² (eta squared)", "Share of a variable's variance explained by the clusters. Used to show that the "
+                         "clusters stopped tracking wind."),
+]
+
+FAQ = [
+    ("Why can't I hear anything at 1×?", "Fin and blue whale calls sit at 15-50 Hz, below what laptop speakers "
+     "reproduce. At 10× a 20 Hz pulse plays at 200 Hz and the minute lasts 6 s."),
+    ("Why one minute per hour, every 4th day?", "A full year is about 1.4 TB of audio. Sampling 2,189 minutes "
+     "keeps the seasons and the daily cycle while streaming only a few GB."),
+    ("Are the cluster names certain?", "Fin and blue are checked against MBARI's call indices. Humpback is "
+     "named from spectrograms and listening only, and says so."),
+    ("Is this real data?", "Yes. Every sound is streamed on demand from MBARI's public archive on AWS Open Data; "
+     "the spectrogram thumbnails here are compressed previews of it."),
+    ("Can I run it myself?", "Yes. The code, tests and reports are on GitHub; the commands are below."),
+]
+
+
+def tour_move(step: int):
+    st.session_state.tour_step = TOUR[max(0, min(len(TOUR) - 1, step))]
+
+
+def quiz(key: str, question: str, options: list[str], answer: int, why: str):
+    st.markdown(f'<div class="ds-label" style="margin-top:1rem">Check yourself</div>'
+                f'<div class="ds-quiz-q">{esc(question)}</div>', unsafe_allow_html=True)
+    pick = st.radio(question, options, index=None, key=f"quiz_{key}", label_visibility="collapsed")
+    if pick is not None:
+        ok = options.index(pick) == answer
+        st.markdown(f'<div class="ds-quiz-a {"ok" if ok else "no"}"><b>{"Right." if ok else "Not quite."}</b> '
+                    f'{esc(why)}</div>', unsafe_allow_html=True)
+
+
+def render_guide():
+    sheet_header("How to read this drawing set",
+                 "Six short steps, each with the real data beside it. About two minutes; every step "
+                 "ends with a button that opens the full sheet.")
+    year = run.name == "1_year_2018-19"
+    st.session_state.setdefault("tour_step", TOUR[0])
+    st.segmented_control("Tour step", TOUR, key="tour_step", label_visibility="collapsed",
+                         format_func=lambda s: f"{TOUR.index(s) + 1}  {s}")
+    step = TOUR.index(st.session_state.tour_step or TOUR[0])
+    blue_sid, fin_sid = NOTABLE[0][1], NOTABLE[1][1]
+
+    text, fig = st.columns([1, 1.15], gap="large")
+    with text:
+        st.markdown(f'<div class="ds-tourno"><span>{step + 1}</span><small>of {len(TOUR)}</small></div>',
+                    unsafe_allow_html=True)
+        if step == 0:
+            st.markdown("""<div class="ds-guide"><h3>Listen first</h3>
+<p>Everything here starts as sound: one minute recorded by a hydrophone 890 m below Monterey Bay.
+The spectrogram on this sheet is the minute with the strongest blue whale call of the data set.</p>
+<p>Press <b>Listen</b> at 1×, then at 10×. Blue and fin whales call between 15 and 50 Hz, below what most
+speakers can play. Playing ten times faster lifts a 20 Hz call to 200 Hz and squeezes the minute into 6 s.</p></div>""",
+                        unsafe_allow_html=True)
+            quiz("listen", "Why play the minute at 10×?",
+                 ["To make it shorter", "To lift the calls into the range speakers can play", "To filter out noise"],
+                 1, "Speed multiplies every frequency: 20 Hz becomes 200 Hz. Shorter is a side effect.")
+            st.button("Open S-1 at this minute", key="g_go0", on_click=go_to, args=("S-1", blue_sid))
+        elif step == 1:
+            st.markdown(f"""<div class="ds-guide"><h3>Read the elevation</h3>
+<p>The elevation is a long-term spectral average: <b>one thin column per sampled minute</b>, time running left
+to right, frequency rising on a log scale from 10 Hz to 7.9 kHz. Darker ink is louder.</p>
+<ol class="ds-notes">
+<li><span><b>~20 Hz</b>: fin whale chorus, a dark band {"from September, strongest October-November" if year else "through the week"}.</span></li>
+<li><span><b>~45 Hz</b>: blue whale B calls.</span></li>
+<li><span><b>Above 1 kHz</b>: wind on the sea surface. Vertical stripes are windy days.</span></li>
+</ol></div>""", unsafe_allow_html=True)
+            quiz("ltsa", "Where should a fin whale chorus appear?",
+                 ["A dark band near 20 Hz", "Vertical stripes above 1 kHz", "A single dot at 7.9 kHz"],
+                 0, "Fin whales repeat 20 Hz pulses for hours, so the band stays dark over many columns. "
+                    "Stripes above 1 kHz follow the wind.")
+            st.button("Open S-1", key="g_go1", on_click=go_to, args=("S-1",))
+        elif step == 2:
+            st.markdown("""<div class="ds-guide"><h3>Read one minute</h3>
+<p>A spectrogram zooms into a single minute: time across, frequency up, ink for level. The spectrogram on this sheet is the
+minute with the strongest fin whale signal.</p>
+<ol class="ds-notes">
+<li><span><b>Fin whale</b>: short pulses near 20 Hz, repeated through the minute.</span></li>
+<li><span><b>Blue whale</b>: a long, steady tone just below 50 Hz, with fainter harmonics above it.</span></li>
+<li><span><b>Ship or wind</b>: broad energy across many frequencies at once, not a narrow line.</span></li>
+</ol></div>""", unsafe_allow_html=True)
+            quiz("spec", "A minute shows energy spread evenly from 100 Hz to 5 kHz. Most likely?",
+                 ["A whale call", "Wind or a passing ship", "A recording gap"],
+                 1, "Calls are narrow lines. Broadband energy is weather or ships; a gap would be blank.")
+            st.button("Open this minute on S-3", key="g_go2", on_click=go_to, args=("S-3", fin_sid))
+        elif step == 3:
+            st.markdown("""<div class="ds-guide"><h3>How the minutes were grouped</h3>
+<p>Each minute becomes 16 numbers: band levels, how far each call band stands out from its neighbours,
+how much it fluctuates, spectral shape and spikiness. K-Means then groups similar minutes, with no labels
+given.</p>
+<p>On all 16 features the groups simply follow the weather: calm days against windy days. Using only the six
+<b>relative</b> features, which compare each band with its neighbours, cancels the wind (η² from
+<span class="ds-val">0.49</span> to <span class="ds-val">0.020</span>) and lets the animals separate.</p></div>""",
+                        unsafe_allow_html=True)
+            quiz("cluster", "Why cluster on relative features?",
+                 ["They are faster to compute", "Wind raises all bands together, so differences cancel it",
+                  "MBARI requires it"],
+                 1, "Wind lifts the whole spectrum. A call lifts one narrow band above its neighbours, "
+                    "which a difference keeps.")
+            st.button("Open S-2", key="g_go3", on_click=go_to, args=("S-2",))
+        elif step == 4:
+            st.markdown("""<div class="ds-guide"><h3>Check every claim</h3>
+<p>Clusters only describe; each interpretation was tested against data the model never saw.</p>
+<ol class="ds-notes">
+<li><span><b>Wind</b>: 1-8 kHz level follows NOAA buoy 46042 (<span class="ds-val">r = 0.86</span> over the year).</span></li>
+<li><span><b>Earthquake</b>: the loudest minute of 1-7 Nov 2018 matches an M3.3 quake in the USGS catalog.</span></li>
+<li><span><b>Whales</b>: MBARI's own call indices agree month by month (<span class="ds-val">r = 0.99</span> fin,
+<span class="ds-val">0.91</span> blue).</span></li>
+<li><span><b>A flaw, fixed</b>: that comparison exposed blue whale harmonics in my fin whale feature; moving
+the background bands raised agreement from <span class="ds-val">0.81</span> to <span class="ds-val">0.93</span>.</span></li>
+</ol></div>""", unsafe_allow_html=True)
+            st.button("Open S-4", key="g_go4", on_click=go_to, args=("S-4",))
+        else:
+            st.markdown("""<div class="ds-guide"><h3>Explore on your own</h3>
+<ol class="ds-notes">
+<li><span><b>Click any mark</b> in the cluster lanes (S-1) or any point in the PCA plan (S-2) to open that minute.</span></li>
+<li><span><b>Step through a cluster</b> with Previous and Next on S-3, and compare its features with the cluster average.</span></li>
+<li><span><b>Switch data set</b> in the sidebar: the year shows seasons, the week shows single events.</span></li>
+<li><span><b>Share a view</b>: the address bar keeps the data set, sheet and minute, so a link opens exactly what you see.</span></li>
+</ol></div>""", unsafe_allow_html=True)
+        st.write("")
+        b1, b2 = st.columns(2)
+        b1.button("Back", key="g_prev", on_click=tour_move, args=(step - 1,), disabled=step == 0,
+                  width="stretch")
+        b2.button("Next step", key="g_next", on_click=tour_move, args=(step + 1,), disabled=step == len(TOUR) - 1,
+                  width="stretch", type="primary")
+
+    with fig:
+        if step == 0:
+            i = row_of[blue_sid]
+            label(f"{NOTABLE[0][0]} · {df.loc[i, 'when']}")
+            st.plotly_chart(spectrogram(i, 300), config=PLOT_CONFIG, width="stretch", key="g_spec0")
+            listen_controls(i, "g0")
+        elif step == 1:
+            label("Elevation", f"Levels in {esc(units)}. The red line marks the selected minute.")
+            st.plotly_chart(elevation(360), config=PLOT_CONFIG, width="stretch", key="g_elev")
+        elif step == 2:
+            i = row_of[fin_sid]
+            label(f"{NOTABLE[1][0]} · {df.loc[i, 'when']}")
+            st.plotly_chart(spectrogram(i, 320), config=PLOT_CONFIG, width="stretch", key="g_spec2")
+            listen_controls(i, "g2")
+        elif step == 3:
+            label("Cluster lanes", "Each mark is one minute, placed in its cluster's lane.")
+            st.plotly_chart(lanes(), config=PLOT_CONFIG, width="stretch", key="g_lanes")
+            shares = df["cluster"].value_counts(normalize=True)
+            st.markdown(" ".join(f'{chip(k)} <span class="ds-val">{shares[k]:.0%}</span>&emsp;' for k in clusters),
+                        unsafe_allow_html=True)
+        elif step == 4:
+            label("Plate 1. Agreement with MBARI's call indices")
+            st.image(str(ROOT / "docs" / "img" / "year_mbari_ci_comparison.png"), width="stretch")
+        else:
+            label("Try these")
+            tries = [("Hear the M3.3 earthquake", "S-3", EARTHQUAKE_ID, "2_week_2018-11"),
+                     ("Strongest blue whale call", "S-3", blue_sid, None),
+                     ("Strongest fin whale chorus", "S-3", fin_sid, None),
+                     ("Browse the clusters", "S-2", None, None)]
+            for n_, (txt, target, sid, data) in enumerate(tries):
+                if data and data not in run_names:
+                    continue
+                st.button(txt, key=f"g_try{n_}", on_click=go_to, args=(target, sid, data), width="stretch")
+
+    st.write("")
+    st.markdown('<div class="ds-sheet ds-sub"><div><h1>Handbook</h1>'
+                '<p>Terms, sheets and common questions.</p></div></div>', unsafe_allow_html=True)
+    h1, h2 = st.columns([1.2, 1], gap="large")
+    with h1:
+        label("Terms")
+        st.markdown(schedule_html([[f"<b>{esc(t)}</b>", esc(d)] for t, d in GLOSSARY], ["Term", "Meaning"], set()),
+                    unsafe_allow_html=True)
+    with h2:
+        label("The sheets")
+        st.markdown(schedule_html([[f'<span class="mono">{s_}</span>', esc(SHEETS[s_][0]), esc(SHEETS[s_][1])]
+                                   for s_ in SHEETS if s_ != "G-0"], ["Sheet", "Title", "Use it to"], set()),
+                    unsafe_allow_html=True)
+        label("Questions")
+        st.markdown('<ol class="ds-notes">' + "".join(
+            f"<li><span><b>{esc(q)}</b> {esc(a)}</span></li>" for q, a in FAQ) + "</ol>", unsafe_allow_html=True)
+        label("Run it yourself")
+        st.code("git clone https://github.com/Paul-Lai0111/ocean-soundscape-ml\n"
+                "cd ocean-soundscape-ml && pip install -e \".[dev]\"\n"
+                "pytest -q                                   # offline\n"
+                "python -m oceansound.pipeline mbari --dates 2018-11-01 --out outputs/day\n"
+                "streamlit run app/dashboard.py", language="bash")
+
+
 # --------------------------------------------------------------- sheets -----
 title, lede = SHEETS[sheet]
 HEADLINES = {"1_year_2018-19": "A year beneath Monterey Bay", "2_week_2018-11": "One week in November 2018"}
@@ -394,7 +612,10 @@ LEDES = {
     "2_week_2018-11": "One minute every 30 minutes, 1-7 November 2018. Four clusters: background, humpback "
                       "song, blue whale calls and impulsive events, including an M3.3 earthquake.",
 }
-if sheet == "S-1":
+if sheet == "G-0":
+    render_guide()
+
+elif sheet == "S-1":
     sheet_header(HEADLINES.get(run.name, demo.get("title", run.name) if demo else run.name),
                  LEDES.get(run.name, demo.get("description", lede) if demo else lede))
     s1 = st.container(key="s1_main")
@@ -415,6 +636,8 @@ if sheet == "S-1":
         for text, sid in NOTABLE:
             st.button(text, key=f"jump_s1_{text}", on_click=select_minute, args=(sid,), width="stretch",
                       type="primary" if st.session_state.minute == sid else "secondary")
+        st.button("New here? Six-step tour on G-0", key="to_guide", type="tertiary",
+                  on_click=go_to, args=("G-0",))
 
     st.write("")
     n1, n2 = st.columns([1.25, 1], gap="large")
@@ -608,7 +831,7 @@ elif sheet == "S-4":
                 f'<a href="{REPORT_URL}">the report</a> (English) and '
                 f'<a href="{REPO_URL}/blob/main/docs/analysis_zh.md">中文版</a>.</div>', unsafe_allow_html=True)
 
-else:  # S-5
+elif sheet == "S-5":
     sheet_header(title, lede)
     a, b = st.columns([1.1, 1], gap="large")
     with a:

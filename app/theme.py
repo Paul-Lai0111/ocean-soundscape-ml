@@ -218,6 +218,21 @@ p, li {{ max-width: 72ch; }}
   background: var(--ink); transform-origin: left; animation: ds-draw 1.1s cubic-bezier(0.16, 1, 0.3, 1) both; }}
 @keyframes ds-draw {{ from {{ transform: scaleX(0.04); }} to {{ transform: scaleX(1); }} }}
 @media (prefers-reduced-motion: reduce) {{ .ds-sheet::after {{ animation: none; }} }}
+/* G-0 reading guide */
+.ds-sub {{ grid-template-columns: 1fr; margin-top: 1.6rem; }}
+.ds-sub h1 {{ font-size: clamp(1.35rem, 2.2vw, 1.9rem) !important; }}
+.ds-tourno {{ display: flex; align-items: baseline; gap: 0.45rem; margin: 0.4rem 0 0.2rem; }}
+.ds-tourno span {{ font: 800 2.6rem/1 'Overpass Mono', monospace; color: var(--ink); }}
+.ds-tourno small {{ font: 600 0.72rem/1 Overpass, sans-serif; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--graphite-soft); }}
+.ds-guide h3 {{ font: 800 1.35rem/1.15 Overpass, sans-serif !important; color: var(--graphite); margin: 0 0 0.6rem;
+  padding: 0; }}
+.ds-guide p {{ font-size: 0.95rem; line-height: 1.55; color: var(--graphite); margin: 0 0 0.7rem; max-width: 62ch; }}
+.ds-quiz-q {{ font-weight: 700; color: var(--graphite); margin: 0.1rem 0 0.3rem; }}
+.ds-quiz-a {{ border-left: 3px solid var(--ink); padding: 0.35rem 0.7rem; margin: 0.2rem 0 0.8rem;
+  font-size: 0.9rem; color: var(--graphite); background: var(--paper-deep); }}
+.ds-quiz-a.no {{ border-left-color: var(--graphite-soft); }}
+.ds-quiz-a.ok b {{ color: var(--ink); }}
 
 @media (max-width: 760px) {{
   [data-testid="stMainBlockContainer"] {{ padding: 1.4rem 0.9rem 2rem; margin: 0.4rem 0.2rem; outline: 0; }}
