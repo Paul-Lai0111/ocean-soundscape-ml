@@ -1,5 +1,7 @@
 # Deep-Ocean Soundscape Analysis: Full Report
 
+**Paul Lai** · M.S. Data Science, UC San Diego · [holai@ucsd.edu](mailto:holai@ucsd.edu) · [GitHub](https://github.com/Paul-Lai0111)
+
 MBARI MARS cabled observatory hydrophone (Monterey Bay, California, 890 m depth).
 Data: July 2018 - June 2019 (the year) and 1-7 November 2018 (the first week, examined in detail).
 

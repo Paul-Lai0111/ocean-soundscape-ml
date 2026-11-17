@@ -1,5 +1,7 @@
 # 深海聲景分析報告（中文完整版）
 
+**Paul Lai** · 加州大學聖地牙哥分校（UC San Diego）資料科學碩士 · [holai@ucsd.edu](mailto:holai@ucsd.edu) · [GitHub](https://github.com/Paul-Lai0111)
+
 MBARI MARS 海底水聽器（Monterey Bay，水深 890 m）
 資料期間：2018-07 ～ 2019-06（全年），以及 2018-11-01 ～ 11-07（第一週，細看）
 

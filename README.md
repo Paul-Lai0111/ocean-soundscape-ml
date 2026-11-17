@@ -1,5 +1,7 @@
 # Ocean Soundscape ML
 
+**Paul Lai** · M.S. Data Science, UC San Diego · [holai@ucsd.edu](mailto:holai@ucsd.edu) · [GitHub](https://github.com/Paul-Lai0111)
+
 Unsupervised discovery of soundscape patterns in a year of deep-ocean hydrophone recordings from
 [MBARI's Pacific Sound archive](https://registry.opendata.aws/pacific-sound/) (MARS cabled observatory,
 890 m depth, Monterey Bay, California), with every interpretation checked against independent data:
@@ -342,6 +344,12 @@ which is why real-data silhouettes are lower (0.27-0.51).
 | Cluster names come from spectrograms | Fin and blue whale names are now backed by MBARI's call indices; humpback has no MBARI index. Dashboard playback makes listening fast. Next: hand-label a few hundred minutes and train a supervised classifier. |
 | Calibration uses one constant | Use the full frequency response from the deployment JSON (±0.55 dB now). |
 | Instrument transients are flagged, not explained | Add a QA flag (kurtosis > 100) and ask MBARI about the dates. |
+
+## Author
+
+**Paul Lai** · M.S. Data Science, UC San Diego · [holai@ucsd.edu](mailto:holai@ucsd.edu) · [GitHub](https://github.com/Paul-Lai0111)
+
+Questions, feedback or collaboration ideas are welcome by email.
 
 ## Data and credits
 

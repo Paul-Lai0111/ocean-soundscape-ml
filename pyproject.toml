@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "oceansound"
 version = "0.1.0"
 description = "Passive-acoustic soundscape features and clustering for ocean hydrophone data (MBARI Pacific Sound)"
+authors = [{ name = "Paul Lai", email = "holai@ucsd.edu" }]
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",

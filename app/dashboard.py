@@ -85,8 +85,12 @@ if "adjusted_rand_index" in summary:
     st.sidebar.markdown(f"**ARI vs truth:** {summary['adjusted_rand_index']:.3f}")
 st.sidebar.caption(f"{summary['time_range'][0]} -> {summary['time_range'][1]}")
 st.sidebar.caption(f"Levels in {units}. Code, method and findings: [GitHub]({REPO_URL})")
+st.sidebar.divider()
+st.sidebar.markdown("**Paul Lai**  \nM.S. Data Science, UC San Diego  \n"
+                    "[holai@ucsd.edu](mailto:holai@ucsd.edu) · [GitHub](https://github.com/Paul-Lai0111)")
 
 st.title("Ocean Soundscape Explorer")
+st.caption("by Paul Lai · M.S. Data Science, UC San Diego")
 st.markdown("Deep-ocean hydrophone recordings from MBARI's MARS observatory (890 m, Monterey Bay), "
             "grouped by unsupervised learning. Pick a run on the left; open **Inspect a window** "
             "to see and **hear** any minute.")
