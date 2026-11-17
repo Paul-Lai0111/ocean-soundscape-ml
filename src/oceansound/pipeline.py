@@ -34,8 +34,8 @@ import pandas as pd
 
 from . import plots
 from .clustering import cluster_features, describe_clusters, evaluate_against_labels
-from .config import (DEFAULT_N_SEGMENTS, DEFAULT_SEG_SECONDS, FEATURE_SETS, MARS_DEP02_CALIBRATION_DB,
-                     MARS_DEP02_END, MARS_DEP02_START)
+from .config import (DEFAULT_N_SEGMENTS, DEFAULT_SEG_SECONDS, FEATURE_SETS, FEATURE_VERSION,
+                     MARS_DEP02_CALIBRATION_DB, MARS_DEP02_END, MARS_DEP02_START)
 from .data import Segment
 from .features import RecordingGap, extract, log_freq_grid
 
@@ -143,6 +143,7 @@ def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0,
         "k": int(res.k),
         "silhouette_by_k": {str(kk): round(v, 4) for kk, v in res.silhouette_by_k.items()},
         "pca_explained_variance": [round(float(v), 4) for v in res.explained_variance],
+        "feature_version": FEATURE_VERSION,
         "calibration_db": calibration_db,
         "units": units_for(calibration_db),
         "feature_set": feature_set,
@@ -240,7 +241,8 @@ def cmd_mbari(a):
     parts, failed = [], []
     for d in a.dates:
         date = dt.date.fromisoformat(d)
-        tag = f"_{date:%Y%m%d}" + (f"_cal{a.calibration_db:g}" if a.calibration_db else "")
+        tag = (f"_{date:%Y%m%d}" + (f"_cal{a.calibration_db:g}" if a.calibration_db else "")
+               + f"_v{FEATURE_VERSION}")
         if _cache_is_current(cache / f"features{tag}.csv") and not a.force:
             log.info("%s: using cache", date)
         else:

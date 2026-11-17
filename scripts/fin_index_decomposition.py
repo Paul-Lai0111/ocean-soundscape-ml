@@ -8,7 +8,8 @@ summer baseline = 0 and November = 1.
 Finding: the background bands, not the peak width. Our 11-15 and 28-34 Hz
 background contains the blue whale B call fundamental (~14 Hz) and 2nd harmonic
 (~28 Hz), so blue whale calls in Aug-Nov depress fin_excess; MBARI's 12 / 34 Hz
-avoid them. A cleaner background (11-13 and 33-36 Hz) fixes it.
+avoid them. A cleaner background (11-13 and 33-36 Hz) fixes it; it is fin_excess since
+FEATURE_VERSION 2 (config.py).
 
 Run scripts/low_freq_spectra.py first.
 Usage: python scripts/fin_index_decomposition.py outputs/mbari_2018-19_hourly [docs/img/out.png]
@@ -51,14 +52,15 @@ variants = {
     "MBARI bins, dB difference": bins(20, 21) - bins(12, 34),
     "narrow 20-21 Hz, our background": band(20, 22) - (band(11, 15) + band(28, 34)) / 2,
     "wide 17-25 Hz, MBARI background": band(17, 25) - bins(12, 34),
-    "ours (fin_excess)": band(17, 25) - (band(11, 15) + band(28, 34)) / 2,
-    "ours, clean background 11-13 & 33-36 Hz": band(17, 25) - (band(11, 13) + band(33, 36)) / 2,
+    "ours v1 (background 11-15 & 28-34 Hz)": band(17, 25) - (band(11, 15) + band(28, 34)) / 2,
+    "ours v2 = fin_excess (background 11-13 & 33-36 Hz)": band(17, 25) - (band(11, 13) + band(33, 36)) / 2,
 }
 V = pd.DataFrame(variants, index=z["segment_ids"])
 V["month"] = month
 
 # sanity checks against the pipeline's own columns
-assert np.allclose(V["ours (fin_excess)"], feats.loc[V.index, "fin_excess"], atol=0.05)
+assert np.allclose(V["ours v2 = fin_excess (background 11-13 & 33-36 Hz)"], feats.loc[V.index, "fin_excess"],
+                   atol=0.05), "run features were not computed with FEATURE_VERSION 2"
 assert np.allclose(V["MBARI CI (ratio)"], feats.loc[V.index, "mbari_fin_ci"], atol=1e-3)
 
 monthly = V.groupby("month").mean()
@@ -91,7 +93,8 @@ for name, x in [("28 Hz minus 34 Hz", bins(28) - bins(34)), ("14 Hz minus 12 Hz"
 hi = season & (blue > np.quantile(blue[season], 0.8))
 lo = season & (blue < np.quantile(blue[season], 0.2))
 print("Aug-Nov, mean index in strongest minus weakest 20% blue whale minutes (dB):")
-for name in ["ours (fin_excess)", "ours, clean background 11-13 & 33-36 Hz", "MBARI bins, dB difference"]:
+for name in ["ours v1 (background 11-15 & 28-34 Hz)", "ours v2 = fin_excess (background 11-13 & 33-36 Hz)",
+             "MBARI bins, dB difference"]:
     print(f"  {name}: {V.loc[hi, name].mean() - V.loc[lo, name].mean():+.2f}")
 print(f"  (MBARI fin CI in those groups: {fin_ci[hi].mean():.3f} vs {fin_ci[lo].mean():.3f})")
 print("\nPer-minute Spearman r with MBARI fin CI:")
@@ -105,7 +108,7 @@ pd.DataFrame({"peak_hz": peak_hz, "sharpness_db": sharp.round(3)}).to_csv(run / 
 fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 4.2), gridspec_kw={"width_ratios": [1.2, 1]})
 x = np.arange(len(scaled))
 for name in variants:
-    style = "--" if "clean" in name else "-"
+    style = "--" if "v2" in name else "-"
     a1.plot(x, scaled[name], "o" + style, ms=3, label=name, lw=2 if "ours" in name or "CI" in name else 1)
 a1.axhline(0, color="k", lw=0.5)
 a1.set_xticks(x)

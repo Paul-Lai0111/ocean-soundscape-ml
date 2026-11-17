@@ -41,10 +41,20 @@ BANDS: dict[str, tuple[float, float, str]] = {
 # Flanking bands used to measure *excess* energy in a narrow band
 # (band level minus mean of its neighbours). Tonal/biological calls stand out,
 # broadband noise (ships, wind) does not.
+#
+# fin_excess background is 11-13 and 33-36 Hz. Version 1 used 11-15 and 28-34 Hz, which
+# contain the blue whale B call fundamental (~14 Hz) and 2nd harmonic (~28 Hz): blue whale
+# calls raised the "background" and depressed fin_excess in Aug-Nov (README section 6,
+# scripts/fin_index_decomposition.py). blue_excess was checked the same way: its background
+# does not pick up fin whales; 55-62 Hz overlaps the B call 4th harmonic slightly (r = +0.29).
 EXCESS_BANDS: dict[str, tuple[tuple[float, float], list[tuple[float, float]]]] = {
-    "fin_excess":  ((17, 25), [(11, 15), (28, 34)]),
+    "fin_excess":  ((17, 25), [(11, 13), (33, 36)]),
     "blue_excess": ((40, 50), [(32, 37), (55, 62)]),
 }
+
+# Bump whenever a feature's definition changes: cached days carry this version in their
+# file name, so features computed by older code are never silently reused.
+FEATURE_VERSION = 2
 
 # --- Feature sets for clustering ---------------------------------------------
 # "all": every scalar feature. On real data its main axis is wind/sea state,

@@ -339,3 +339,40 @@ def test_short_read_raises(monkeypatch):
         monkeypatch.setattr(sf.SoundFile, "read", short_read)
         with pytest.raises(OSError, match="short read"):
             list(data.stream_local_wavs([p], n_segments=2, seg_seconds=5))
+
+
+def test_fin_excess_ignores_blue_whale_b_harmonics():
+    """Version 2: blue whale B-call energy at ~14 and ~28 Hz must not depress fin_excess."""
+    rng = np.random.default_rng(7)
+    t = np.arange(FS * 60) / FS
+    fin = make_segment("fin_whale", FS, 60, rng).astype(np.float64)
+    harmonics = 0.3 * (np.sin(2 * np.pi * 14 * t) + np.sin(2 * np.pi * 28 * t))  # B fundamental + 2nd
+    a = extract(fin, FS).features["fin_excess"]
+    b = extract(fin + harmonics, FS).features["fin_excess"]
+    assert abs(a - b) < 1.0
+
+
+def test_cache_file_names_carry_the_feature_version(monkeypatch):
+    import datetime as dt
+
+    from oceansound import config
+    from oceansound.data import Segment
+
+    seen = []
+
+    kinds = {1: "ambient", 2: "ship", 3: "fin_whale"}   # distinct days so clustering has structure
+
+    def fake_day(date, n, s):
+        x = make_segment(kinds[date.day], FS, 5, np.random.default_rng(date.day))
+        t0 = dt.datetime(2018, 11, date.day, tzinfo=dt.timezone.utc)
+        return iter([Segment(f"w{date.day}", "t", t0, FS, x)])
+
+    monkeypatch.setattr("oceansound.data.stream_mbari_day", fake_day)
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d)
+        pipeline.main(["mbari", "--dates", "2018-11-01", "2018-11-02", "2018-11-03", "--n-segments", "1",
+                       "--seg-seconds", "5", "--out", str(out)])
+        seen = sorted(p.name for p in (out / "cache").glob("features_*.csv"))
+        s = json.loads((out / "summary.json").read_text())
+    assert all(name.endswith(f"_v{config.FEATURE_VERSION}.csv") for name in seen) and len(seen) == 3
+    assert s["feature_version"] == config.FEATURE_VERSION

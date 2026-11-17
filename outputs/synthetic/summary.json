@@ -1,22 +1,28 @@
 {
   "n_windows": 100,
+  "n_dropped_nonfinite": 0,
   "seg_seconds": 60,
   "k": 5,
   "silhouette_by_k": {
-    "2": 0.4367,
-    "3": 0.5541,
-    "4": 0.689,
-    "5": 0.7757,
-    "6": 0.7336,
-    "7": 0.6866,
-    "8": 0.6395
+    "2": 0.4363,
+    "3": 0.5538,
+    "4": 0.6877,
+    "5": 0.7745,
+    "6": 0.7335,
+    "7": 0.6867,
+    "8": 0.6396
   },
   "pca_explained_variance": [
-    0.4333,
-    0.2757,
-    0.1701,
-    0.0966
+    0.4331,
+    0.2761,
+    0.1696,
+    0.0968
   ],
+  "feature_version": 2,
+  "calibration_db": 0.0,
+  "units": "dB re FS",
+  "feature_set": "all",
+  "clip_quantile": null,
   "features": [
     "broadband_db",
     "b_10_100",
