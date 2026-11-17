@@ -19,7 +19,8 @@ from August to November is blue whale B calls; vertical stripes are ships and st
 | 2 | **The dominant axis of the raw soundscape is wind, not biology.** 1-8 kHz noise tracks NOAA buoy wind speed (Spearman r = 0.84 for one week, 0.86 for the year). | [Wind validation](#2-wind-explains-the-default-clusters) |
 | 3 | **Relative features remove the weather.** Clustering on band-vs-neighbour and within-minute variability features cuts the wind dependence of the clusters from η² = 0.49 to 0.025 and raises silhouette from 0.27 to 0.52. | [Relative features](#3-relative-features-find-the-animals) |
 | 4 | **The pipeline found an earthquake on its own.** The loudest minute of the first week is an M3.3 quake 78 km away, arriving ~17 s after origin time. | [Earthquake](#4-an-earthquake-found-without-looking-for-one) |
-| 5 | **Archive quirks are handled.** Zero-filled recording gaps (22 of 336 minutes in the first week, including a partial 2% gap that would have silently skewed features), 3 missing days, and 7 suspected instrument transients. | [Data quality](#5-data-quality) |
+| 5 | **Our call features agree with MBARI's published call indices.** Computed on the same 2,189 minutes, fin and blue whale indices track ours month by month (Spearman r = 0.95 and 0.91) and the "song season" cluster has the highest MBARI indices. | [MBARI comparison](#6-agreement-with-mbaris-published-call-indices) |
+| 6 | **Archive quirks are handled.** Zero-filled recording gaps (22 of 336 minutes in the first week, including a partial 2% gap that would have silently skewed features), 3 missing days, network drops that had silently removed minutes, and 7 suspected instrument transients. | [Data quality](#5-data-quality) |
 
 ## What the pipeline does
 
@@ -138,10 +139,52 @@ arrivals for that distance.
   non-finite rows are dropped and counted in `summary.json`.
 - **Missing days.** 2019-04-05, 2019-04-09 and 2019-06-25 are not in the archive; long runs log and skip
   them instead of aborting.
+- **Network drops.** During one re-run an S3 connection failure first aborted the run, and on the retry 19
+  of 24 minutes of 2019-03-01 failed one by one and were silently skipped (the day was saved with 5).
+  Now a short read raises an error, a failed minute that is not a recording gap makes the whole day
+  retry (3 attempts with back-off), an empty window is never mistaken for a gap, and cached days written
+  by older code are recomputed. The year was re-run until it reproduced all 2,189 minutes.
 - **Suspected instrument transients.** Seven minutes in the year have kurtosis 600-2000 and broadband
   levels up to 155 dB re 1 µPa in 10-100 Hz. The three inspected are each a single ~30 ms smooth pulse
   30-100x the background; none of the seven coincides with a USGS earthquake (M >= 2, 400 km), and they cluster together (k = 5, "all" run).
   The cause (mechanical contact or electrical) cannot be determined from the audio alone.
+
+### 6. Agreement with MBARI's published call indices
+
+MBARI's Pacific Sound tutorials (J. Ryan) define a **call index** (CI) for fin whales (mean spectrum level
+at 20-21 Hz divided by that at 12 and 34 Hz) and for blue whale B calls (43-44 Hz over 37 and 50 Hz), from
+calibrated 60 s spectra with 1 Hz resolution; CI = 1 means no signal. MBARI does not publish precomputed
+index values, so the pipeline computes the index exactly as in the tutorial code (a test re-implements
+it line by line) on the same minutes. As a cross-check, the index from our 16 kHz minutes matches the
+index from MBARI's own 2 kHz product to within 0.0006 on three test minutes.
+
+![Our features vs MBARI call indices](docs/img/year_mbari_ci_comparison.png)
+
+| Agreement (July 2018 - June 2019, n = 2,189) | Fin whale | Blue whale B call |
+|---|---|---|
+| Monthly (12 months), Spearman r | **0.95** | **0.91** |
+| Per minute, whole year | 0.81 | 0.66 |
+| Per minute, in season (fin Sep-Jan, blue Aug-Nov) | 0.76 | **0.82** |
+| Per minute, out of season | 0.73 | 0.46 |
+
+Out of blue whale season the MBARI index barely varies (standard deviation 0.023 vs 0.062 in season), so
+there is little signal for the two measures to agree on; in season they agree closely. One difference:
+from January to May our `fin_excess` (17-25 Hz band) declines more slowly than MBARI's narrow 20-21 Hz
+index. The cause was not investigated.
+
+The indices also check the cluster names, without being used to make them:
+
+| Cluster | Minutes | Median fin CI | Median blue CI |
+|---|---|---|---|
+| Year, relative k=3: "song season" | 257 | **1.087** | **1.040** |
+| Year, relative k=3: background | 1,902 | 1.017 | 1.011 |
+| Year, relative k=3: impulsive | 30 | 1.000 | 1.005 |
+| Nov 2018, relative k=4: "blue whale B calls" | 45 | 1.126 | **1.187** |
+| Nov 2018, relative k=4: other three clusters | 8-185 | 1.108-1.134 | 1.071-1.120 |
+
+The cluster named "blue whale B calls" from its spectrograms has the highest MBARI blue whale index of
+the week. MBARI has no comparable index for humpback song, so that cluster name rests on spectrograms
+(and listening in the dashboard).
 
 ## Calibration
 
@@ -159,7 +202,7 @@ Relative features (excess, variability, shape) do not depend on calibration.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q                                          # 13 offline tests, ~20 s
+pytest -q                                          # 20 offline tests, ~25 s
 
 # Offline demo on labelled synthetic sources
 python -m oceansound.pipeline synthetic --out outputs/synthetic
@@ -172,6 +215,8 @@ python -m oceansound.pipeline recluster --src outputs/mbari_nov2018 --out output
 # The year (about 20 minutes): one minute per hour, every 4th day, calibrated
 python -m oceansound.pipeline mbari --dates $(cat docs/dates_2018-19.txt) --n-segments 24 --calibrated --out outputs/mbari_2018-19_hourly
 python -m oceansound.pipeline patterns --out outputs/mbari_2018-19_hourly            # monthly + hour-of-day
+python -m oceansound.pipeline recluster --src outputs/mbari_2018-19_hourly --out outputs/mbari_2018-19_relative --features relative --clip 0.01
+python -m oceansound.pipeline compare --out outputs/mbari_2018-19_relative           # vs MBARI call indices
 python scripts/figure_earthquake.py                                                  # earthquake figure
 
 # Explore, listen (Inspect tab plays the minute at 1x / 4x / 10x speed) and compare runs
@@ -187,6 +232,7 @@ Each day is cached under `outputs/<run>/cache/`, so re-runs and added days only 
 - `summary.json`: k, silhouette per k, explained variance, feature set, calibration, wind statistics
 - `features_wind.csv`, `wind_correlations.csv` (after `wind`)
 - `monthly_summary.csv`, `diel_night_minus_day.csv`, `cluster_share_by_month.csv` (after `patterns`)
+- `mbari_ci_*.csv` (after `compare`; calibrated runs carry `mbari_fin_ci` / `mbari_blue_ci` columns)
 - `figures/`: LTSA, band levels, PCA, silhouette, example spectrograms per cluster, wind, monthly, month x hour
 
 ## Validation on synthetic data
@@ -205,7 +251,7 @@ which is why real-data silhouettes are lower (0.27-0.52).
 |---|---|
 | Sampled, not continuous (1 min per hour) | Short events between windows are missed. Rates are comparable across months; for event counts, run with more windows per day on selected days. |
 | One year, every 4th day | Enough for a seasonal shape, not for year-to-year change. Extend to 2015-2024 (same calibration from 2017-06). |
-| Cluster names come from spectrograms | Dashboard playback makes listening fast. Next: hand-label a few hundred minutes and train a supervised classifier; compare with MBARI's published fin/blue whale call indices. |
+| Cluster names come from spectrograms | Fin and blue whale names are now backed by MBARI's call indices; humpback has no MBARI index. Dashboard playback makes listening fast. Next: hand-label a few hundred minutes and train a supervised classifier. |
 | Calibration uses one constant | Use the full frequency response from the deployment JSON (±0.55 dB now). |
 | Instrument transients are flagged, not explained | Add a QA flag (kurtosis > 100) and ask MBARI about the dates. |
 
@@ -215,6 +261,8 @@ which is why real-data silhouettes are lower (0.27-0.52).
   MBARI's citation terms (the WAV headers cite <https://doi.org/10.1109/OCEANS.2016.7761363>).
 - Wind: NOAA National Data Buoy Center, station 46042 (Monterey Bay) historical standard meteorological data.
 - Earthquakes: USGS Earthquake Catalog (FDSN event web service).
+- Call index method: MBARI Pacific Sound tutorials by John Ryan,
+  <https://docs.mbari.org/pacific-sound/> (notebooks: fin whale call index, blue whale B call index).
 
 ## Project layout
 
@@ -227,8 +275,9 @@ src/oceansound/
   clustering.py   standardize -> (winsorize) -> PCA -> K-Means (silhouette)
   environment.py  NOAA buoy parsing, nearest-time join, wind correlations
   temporal.py     monthly and month x local-hour summaries
+  validation.py   agreement with MBARI's call indices
   plots.py        static figures
-  pipeline.py     CLI: synthetic | mbari | local | list | recluster | wind | patterns
+  pipeline.py     CLI: synthetic | mbari | local | list | recluster | wind | patterns | compare
 app/dashboard.py  Streamlit explorer with audio playback
 scripts/          one-off figures
 docs/             figures and the analysis write-up (Chinese: docs/analysis_zh.md)

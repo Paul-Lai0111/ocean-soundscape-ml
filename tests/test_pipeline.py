@@ -297,3 +297,45 @@ def test_stale_cache_without_reference_columns_is_recomputed():
         assert not pipeline._cache_is_current(old)
         assert pipeline._cache_is_current(new)
         assert not pipeline._cache_is_current(Path(d) / "missing.csv")
+
+
+def test_window_failures_retry_the_day_but_gaps_do_not():
+    from types import SimpleNamespace
+
+    from oceansound.data import Segment
+
+    a = SimpleNamespace(n_segments=3, seg_seconds=5, calibration_db=0.0)
+    good = make_segment("ambient", FS, 5, np.random.default_rng(0))
+    calls = {"n": 0}
+
+    def day(date, n, s):   # first attempt: one window is truncated to nothing (network glitch)
+        calls["n"] += 1
+        broken = np.zeros(0, dtype=np.float32) if calls["n"] == 1 else good
+        return iter([Segment("w0", "t", None, FS, good), Segment("w1", "t", None, FS, broken),
+                     Segment("w2", "t", None, FS, np.zeros_like(good))])      # w2 is a real gap
+
+    out = pipeline._stream_day_with_retries(day, "2019-03-01", a, wait_s=0)
+    assert calls["n"] == 2                                  # retried because of w1, not w2
+    assert list(out[0]["segment_id"]) == ["w0", "w1"]       # gap still skipped
+
+    calls["n"] = -10                                        # keeps failing: last attempt is lenient
+    out = pipeline._stream_day_with_retries(day, "2019-03-01", a, attempts=2, wait_s=0)
+    assert list(out[0]["segment_id"]) == ["w0", "w1"] or list(out[0]["segment_id"]) == ["w0"]
+
+
+def test_short_read_raises(monkeypatch):
+    import pytest
+
+    from oceansound import data
+
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "TEST-20200101T000000Z.wav"
+        sf.write(p, make_segment("ambient", FS, 20), FS, subtype="PCM_24")
+        real_read = sf.SoundFile.read
+
+        def short_read(self, frames=-1, *args, **kw):     # simulate a connection dropping mid-read
+            return real_read(self, max(1, frames // 2), *args, **kw)
+
+        monkeypatch.setattr(sf.SoundFile, "read", short_read)
+        with pytest.raises(OSError, match="short read"):
+            list(data.stream_local_wavs([p], n_segments=2, seg_seconds=5))

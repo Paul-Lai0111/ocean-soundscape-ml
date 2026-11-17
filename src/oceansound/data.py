@@ -92,6 +92,9 @@ def _read_windows(fileobj, source: str, seg_seconds: float, n_segments: int,
         for i, off in enumerate(_evenly_spaced_offsets(snd.frames, fs, seg_seconds, n_segments)):
             snd.seek(off)
             x = snd.read(seg_len, dtype="float32", always_2d=True)[:, 0]  # first channel
+            if x.size < min(seg_len, snd.frames - off):
+                # A dropped connection can surface as a short read rather than an exception.
+                raise OSError(f"short read in {source} at {off / fs:.0f} s: {x.size} of {seg_len} samples")
             start = (t0 or dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)) + dt.timedelta(seconds=off / fs)
             yield Segment(
                 segment_id=f"{Path(source).stem}_{i:03d}",

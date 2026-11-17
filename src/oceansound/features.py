@@ -77,7 +77,9 @@ def extract(x: np.ndarray, fs: int, calibration_db: float = 0.0) -> SegmentFeatu
     calibration_db : added to every level (0 -> dB re full scale)
     """
     x = np.asarray(x, dtype=np.float64)
-    zero_frac = float(np.mean(x == 0)) if x.size else 1.0
+    if x.size < fs:  # less than 1 s: a failed read, not a recording gap
+        raise ValueError(f"window has only {x.size} samples")
+    zero_frac = float(np.mean(x == 0))
     if zero_frac > MAX_ZERO_FRACTION:
         raise RecordingGap(f"{zero_frac:.0%} of samples are exactly zero (recording gap)")
     x = x - x.mean()

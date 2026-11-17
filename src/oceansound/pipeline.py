@@ -37,7 +37,7 @@ from .clustering import cluster_features, describe_clusters, evaluate_against_la
 from .config import (DEFAULT_N_SEGMENTS, DEFAULT_SEG_SECONDS, FEATURE_SETS, MARS_DEP02_CALIBRATION_DB,
                      MARS_DEP02_END, MARS_DEP02_START)
 from .data import Segment
-from .features import extract, log_freq_grid
+from .features import RecordingGap, extract, log_freq_grid
 
 log = logging.getLogger("oceansound")
 
@@ -50,15 +50,28 @@ REFERENCE_COLS = ["mbari_fin_ci", "mbari_blue_ci"]
 # Core steps
 # ----------------------------------------------------------------------------
 
-def extract_all(segments: Iterable[Segment], calibration_db: float = 0.0):
-    """Run feature extraction over segments. Bad segments are logged and skipped."""
-    rows, ltsa, thumbs = [], [], []
+class WindowErrors(RuntimeError):
+    """Some windows failed for reasons other than a recording gap (possibly transient)."""
+
+
+def extract_all(segments: Iterable[Segment], calibration_db: float = 0.0, strict: bool = False):
+    """Run feature extraction over segments.
+
+    Recording gaps are always skipped. Other per-window failures are skipped with a
+    warning, unless ``strict``: then they raise ``WindowErrors`` so the caller can retry
+    (a network hiccup must not silently remove windows from a day).
+    """
+    rows, ltsa, thumbs, errors = [], [], [], []
     t_start = time.time()
     for i, seg in enumerate(segments, 1):
         try:
             sf = extract(seg.samples, seg.fs, calibration_db)
-        except Exception as e:  # noqa: BLE001 - keep going on one bad window
+        except RecordingGap as e:
             log.warning("skipping %s: %s", seg.segment_id, e)
+            continue
+        except Exception as e:  # noqa: BLE001 - keep going on one bad window
+            log.warning("skipping %s: %s: %s", seg.segment_id, type(e).__name__, e)
+            errors.append(seg.segment_id)
             continue
         rows.append({"segment_id": seg.segment_id, "source": seg.source,
                      "start_time": seg.start_time, "label": seg.label, **sf.features})
@@ -66,6 +79,8 @@ def extract_all(segments: Iterable[Segment], calibration_db: float = 0.0):
         thumbs.append(sf.thumbnail)
         if i % 10 == 0:
             log.info("  %d windows processed (%.1f s)", i, time.time() - t_start)
+    if errors and strict:
+        raise WindowErrors(f"{len(errors)} window(s) failed: {', '.join(errors[:5])}")
     if not rows:
         raise RuntimeError("no windows were processed")
     return pd.DataFrame(rows), np.stack(ltsa), np.stack(thumbs)
@@ -191,8 +206,15 @@ def _stream_day_with_retries(stream_day, date, a, attempts: int = 3, wait_s: flo
     Returns (features, ltsa, thumbs), or None if the day could not be processed.
     """
     for attempt in range(1, attempts + 1):
+        last = attempt == attempts
         try:
-            return extract_all(stream_day(date, a.n_segments, a.seg_seconds), a.calibration_db)
+            # strict until the last attempt: a failed window (not a gap) triggers a retry of the day
+            return extract_all(stream_day(date, a.n_segments, a.seg_seconds), a.calibration_db,
+                               strict=not last)
+        except WindowErrors as e:
+            log.warning("%s: attempt %d: %s, retrying in %.0f s", date, attempt, e, wait_s * attempt)
+            time.sleep(wait_s * attempt)
+            continue
         except (FileNotFoundError, RuntimeError) as e:   # day missing, or every window was a gap
             log.warning("%s: skipped (%s)", date, e)
             return None
