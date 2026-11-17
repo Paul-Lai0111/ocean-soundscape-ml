@@ -168,9 +168,34 @@ index from MBARI's own 2 kHz product to within 0.0006 on three test minutes.
 | Per minute, out of season | 0.73 | 0.46 |
 
 Out of blue whale season the MBARI index barely varies (standard deviation 0.023 vs 0.062 in season), so
-there is little signal for the two measures to agree on; in season they agree closely. One difference:
-from January to May our `fin_excess` (17-25 Hz band) declines more slowly than MBARI's narrow 20-21 Hz
-index. The cause was not investigated.
+there is little signal for the two measures to agree on; in season they agree closely.
+
+**Investigation: why `fin_excess` stays high in January-May while MBARI's index falls.** Exact 1 Hz
+spectra of all 2,189 minutes (`scripts/low_freq_spectra.py`) were used to build index variants that
+change one design choice at a time (`scripts/fin_index_decomposition.py`). Scaled to summer = 0 and
+November = 1, the Jan-May mean is 0.25 for MBARI's index and 0.45 for ours:
+
+| Variant | Jan-May |
+|---|---|
+| MBARI index as a dB difference instead of a ratio | 0.25 (no effect) |
+| Our wide 17-25 Hz peak band with MBARI's 12 / 34 Hz background | 0.26 (no effect) |
+| MBARI's 20-21 Hz peak with our 11-15 / 28-34 Hz background | 0.40 (most of the gap) |
+
+![Fin index investigation](docs/img/year_fin_index_investigation.png)
+
+The cause is the **background bands**. Ours contain the blue whale B call fundamental (~14 Hz) and
+second harmonic (~28 Hz). In August-November, the 28 Hz level tracks MBARI's blue whale index
+(r = +0.71), and in the 20% of minutes with the strongest blue whale calls our `fin_excess` is 0.68 dB
+*lower* than in the weakest 20%, although MBARI's fin index shows fin whales are more active then
+(1.079 vs 1.030). Blue whale calls raise our "background" and depress the fin whale value in autumn;
+in spring the blue whales are gone, so the old index only looked as if it declined slowly.
+
+A background of **11-13 and 33-36 Hz** avoids those harmonics. Evaluated on the same minutes, it
+raises per-minute agreement with MBARI's fin index from r = 0.81 to 0.93 (0.77 to 0.96 in fin season),
+monthly agreement from 0.95 to 0.99, brings the Jan-May value to 0.28, and turns the blue whale effect
+from -0.68 dB to +3.06 dB. Relative-feature clustering stays at k = 3 (silhouette 0.521 -> 0.513, wind
+η² 0.025 -> 0.020). *The pipeline still uses the original bands; all other numbers in this README
+come from it.*
 
 The indices also check the cluster names, without being used to make them:
 
@@ -251,6 +276,7 @@ which is why real-data silhouettes are lower (0.27-0.52).
 |---|---|
 | Sampled, not continuous (1 min per hour) | Short events between windows are missed. Rates are comparable across months; for event counts, run with more windows per day on selected days. |
 | One year, every 4th day | Enough for a seasonal shape, not for year-to-year change. Extend to 2015-2024 (same calibration from 2017-06). |
+| `fin_excess` background overlaps blue whale B harmonics | Diagnosed and a fix evaluated (see section 6); adopting it means re-extracting features and updating all numbers. |
 | Cluster names come from spectrograms | Fin and blue whale names are now backed by MBARI's call indices; humpback has no MBARI index. Dashboard playback makes listening fast. Next: hand-label a few hundred minutes and train a supervised classifier. |
 | Calibration uses one constant | Use the full frequency response from the deployment JSON (±0.55 dB now). |
 | Instrument transients are flagged, not explained | Add a QA flag (kurtosis > 100) and ask MBARI about the dates. |
