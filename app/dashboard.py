@@ -245,7 +245,7 @@ def time_ticks():
         key = t.dt.strftime("%Y-%m")
         first = key.ne(key.shift()).to_numpy().nonzero()[0]
         first = [i for i in first if t.iloc[i].month in (1, 4, 7, 10)]      # quarterly: legible on phones
-        return first, [t.iloc[i].strftime("%b %Y") for i in first]
+        return first, [t.iloc[i].strftime("%b") for i in first]      # the years go in the axis title
     key = t.dt.strftime("%Y-%m-%d")
     first = key.ne(key.shift()).to_numpy().nonzero()[0]
     return first, [str(t.iloc[i].day) for i in first]
@@ -253,7 +253,9 @@ def time_ticks():
 
 def time_title() -> str:
     t = df["start_time"]
-    return "" if (t.max() - t.min()).days > 40 else f"Day of {t.iloc[0]:%B %Y} (UTC)"
+    if (t.max() - t.min()).days > 40:
+        return f"{t.min():%B %Y} to {t.max():%B %Y}"
+    return f"Day of {t.iloc[0]:%B %Y} (UTC)"
 
 
 def elevation(height=330) -> go.Figure:
@@ -265,16 +267,16 @@ def elevation(height=330) -> go.Figure:
         customdata=np.repeat(df["when"].to_numpy()[None, :], len(freqs), axis=0),
         hovertemplate="%{customdata}<br>%{y:.0f} Hz · %{z:.0f} dB<extra></extra>"))
     tv, tt = time_ticks()
-    fig.update_yaxes(type="log", title="Frequency (Hz)", tickvals=[10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
+    fig.update_yaxes(type="log", title="Hz", tickvals=[10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
                      ticktext=["10", "20", "50", "100", "200", "500", "1k", "2k", "5k"])
     fig.update_xaxes(tickvals=tv, ticktext=tt, range=[-0.5, len(df) - 0.5], showgrid=False, title=time_title())
-    T.style_figure(fig, height, margin=dict(l=56, r=16, t=8, b=34 if not time_title() else 48))
+    T.style_figure(fig, height, margin=dict(l=64, r=62, t=8, b=48))
     fig.update_xaxes(tickangle=0)
     fig.update_yaxes(showgrid=False)
     if calibrated or "MARS" in str(df["source"].iloc[0]):
-        T.dimension(fig, 15, 25, "Fin whale chorus<br>~20 Hz")
-        T.dimension(fig, 40, 50, "Blue whale B call<br>~45 Hz")
-        T.dimension(fig, 1000, 7900, "Wind and sea state<br>above 1 kHz", color=T.GRAPHITE_SOFT)
+        T.dimension(fig, 15, 25, "fin<br>~20 Hz")
+        T.dimension(fig, 40, 50, "blue<br>~45 Hz")
+        T.dimension(fig, 1000, 7900, "wind<br>&gt;1 kHz", color=T.GRAPHITE_SOFT)
     i = row_of[st.session_state.minute]
     fig.add_vline(x=i, line=dict(color=T.RED, width=1.5))
     fig.add_annotation(x=i, y=1.0, yref="paper", text="A", showarrow=False, yanchor="bottom",
@@ -298,12 +300,12 @@ def lanes(height=None) -> go.Figure:
     fig.update_xaxes(tickvals=tv, ticktext=tt, range=[-0.5, len(df) - 0.5], showgrid=False)
     fig.update_yaxes(categoryorder="array", categoryarray=[name_of[k] for k in reversed(clusters)],
                      showgrid=True, griddash="solid", gridcolor=T.INK_FAINT, showticklabels=False)
-    T.style_figure(fig, height or 40 * len(clusters) + 56,
-                   margin=dict(l=56, r=16, t=4, b=34 if not time_title() else 48))
-    fig.update_xaxes(tickangle=0, title=time_title())
+    T.style_figure(fig, height or 50 * len(clusters) + 56,
+                   margin=dict(l=64, r=62, t=4, b=48))
+    fig.update_xaxes(tickangle=0, title_text=time_title())
     for k in clusters:                       # lane names written into the lane, left edge
         fig.add_annotation(xref="paper", yref="y", x=0.006, y=name_of[k], text=esc(name_of[k]),
-                           showarrow=False, xanchor="left", yanchor="bottom", yshift=3,
+                           showarrow=False, xanchor="left", yanchor="bottom", yshift=9,
                            bgcolor="rgba(236,238,233,0.86)", borderpad=1,
                            font=dict(family="Overpass", size=10.5, color=T.GRAPHITE))
     fig.update_layout(clickmode="event+select")
@@ -319,10 +321,10 @@ def spectrogram(i: int, height=300) -> go.Figure:
     fig.update_yaxes(type="log", title="Hz", tickvals=[10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
                      ticktext=["10", "20", "50", "100", "200", "500", "1k", "2k", "5k"], showgrid=False)
     fig.update_xaxes(title="Seconds", showgrid=False)
-    T.style_figure(fig, height, margin=dict(l=48, r=10, t=6, b=40))
+    T.style_figure(fig, height, margin=dict(l=48, r=52, t=6, b=40))
     if calibrated or "MARS" in str(df["source"].iloc[0]):
-        T.dimension(fig, 15, 25, "fin 20 Hz", x_paper=0.985)
-        T.dimension(fig, 40, 50, "blue 45 Hz", x_paper=0.985)
+        T.dimension(fig, 15, 25, "fin")
+        T.dimension(fig, 40, 50, "blue")
     return fig
 
 
@@ -386,9 +388,15 @@ def schedule_html(rows: list[list[str]], head: list[str], numeric: set[int], hi_
 # --------------------------------------------------------------- sheets -----
 title, lede = SHEETS[sheet]
 HEADLINES = {"1_year_2018-19": "A year beneath Monterey Bay", "2_week_2018-11": "One week in November 2018"}
+LEDES = {
+    "1_year_2018-19": "One minute per hour, every 4th day, July 2018 to June 2019. Whale song fills about half "
+                      "of all minutes in October-November and almost none from March to August.",
+    "2_week_2018-11": "One minute every 30 minutes, 1-7 November 2018. Four clusters: background, humpback "
+                      "song, blue whale calls and impulsive events, including an M3.3 earthquake.",
+}
 if sheet == "S-1":
     sheet_header(HEADLINES.get(run.name, demo.get("title", run.name) if demo else run.name),
-                 demo.get("description", lede) if demo else lede)
+                 LEDES.get(run.name, demo.get("description", lede) if demo else lede))
     s1 = st.container(key="s1_main")
     left, right = s1.columns([2.15, 1], gap="large")
     with left:

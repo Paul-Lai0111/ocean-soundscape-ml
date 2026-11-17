@@ -52,6 +52,7 @@ def style_figure(fig: go.Figure, height: int, *, margin=None, show_legend=False)
         gridcolor=INK_FAINT, gridwidth=0.5, griddash="dot", zeroline=False,
         tickfont=dict(family=MONO, size=11, color=GRAPHITE_SOFT),
         title_font=dict(family=FONT, size=11, color=GRAPHITE_SOFT),
+        automargin=False,
     )
     fig.update_xaxes(**axis)
     fig.update_yaxes(**axis)
@@ -68,17 +69,19 @@ def style_figure(fig: go.Figure, height: int, *, margin=None, show_legend=False)
     return fig
 
 
-def dimension(fig: go.Figure, y0: float, y1: float, label: str, *, color=INK, x_paper=0.988):
-    """A vertical dimension line inside the right edge spanning y0..y1 (data units), label to its left."""
+def dimension(fig: go.Figure, y0: float, y1: float, label: str, *, color=INK, x_paper=1.012):
+    """A vertical dimension line just outside the plot's right edge, spanning y0..y1, labelled to its right.
+
+    Kept outside the data so it never hides the calls it names; labels are short to fit a narrow margin.
+    """
     fig.add_shape(type="line", xref="paper", yref="y", x0=x_paper, x1=x_paper, y0=y0, y1=y1,
                   line=dict(color=color, width=1))
     for y in (y0, y1):
         fig.add_shape(type="line", xref="paper", yref="y", x0=x_paper - 0.006, x1=x_paper + 0.006,
                       y0=y, y1=y, line=dict(color=color, width=1))
     # annotations on a log axis take log10 positions; shapes take data values
-    fig.add_annotation(xref="paper", yref="y", x=x_paper - 0.012, y=math.log10((y0 * y1) ** 0.5),
-                       yanchor="middle", xanchor="right", showarrow=False, text=label, align="right",
-                       bgcolor="rgba(236,238,233,0.86)", borderpad=2,
+    fig.add_annotation(xref="paper", yref="y", x=x_paper, xshift=6, y=math.log10((y0 * y1) ** 0.5),
+                       yanchor="middle", xanchor="left", showarrow=False, text=label, align="left",
                        font=dict(family=FONT, size=10.5, color=color))
 
 
@@ -172,15 +175,9 @@ p, li {{ max-width: 72ch; }}
 .ds-rev td.rev {{ font: 800 0.95rem/1 'Overpass Mono', monospace; color: var(--red); text-align: center; }}
 
 
-/* plates (report figures) */
-.ds-plate {{ border: 1px solid var(--ink); padding: 0.6rem 0.6rem 0.5rem; background: #f3f4f0; }}
-.ds-plate .cap {{ font-size: 0.8rem; color: var(--graphite-soft); margin-top: 0.4rem; }}
-.ds-plate .cap b {{ color: var(--graphite); }}
-
 /* zone numbers across the top of the frame */
-.ds-zones {{ display: grid; grid-template-columns: repeat(8, 1fr); margin: -2.25rem -2.6rem 1.2rem; }}
-.ds-zones span {{ font: 500 0.6rem/1 'Overpass Mono', monospace; color: var(--ink); text-align: center;
-  padding-top: 0.6rem; }}
+.ds-zones {{ display: grid; grid-template-columns: repeat(8, 1fr); margin: -2.4rem -2.6rem 1.9rem; height: 7px; }}
+.ds-zones span {{ font: 500 0.58rem/7px 'Overpass Mono', monospace; color: var(--ink); text-align: center; }}
 
 /* drawing index: a ruled list, not radio dots (Streamlit: radiogroup > div > label[stRadioOption]) */
 [data-testid="stSidebar"] [data-testid="stRadioGroup"] {{ gap: 0; border: 1px solid var(--ink); background: var(--paper); }}
@@ -193,6 +190,9 @@ p, li {{ max-width: 72ch; }}
 [data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"] {{ background: var(--ink); }}
 [data-testid="stSidebar"] [data-testid="stRadioOption"][data-selected="true"] p {{ color: var(--paper); font-weight: 700; }}
 [data-testid="stSidebar"] [data-testid="stRadioOption"]:has(input:focus-visible) {{ outline: 2px solid var(--red); outline-offset: -2px; }}
+
+[data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapsedControl"] {{
+  background: var(--paper); border: 1px solid var(--ink); border-radius: 0; }}
 
 /* phone-only pieces */
 .st-key-mobile_nav, .st-key-mobile_foot {{ display: none; }}
@@ -221,13 +221,13 @@ p, li {{ max-width: 72ch; }}
 
 @media (max-width: 760px) {{
   [data-testid="stMainBlockContainer"] {{ padding: 1.4rem 0.9rem 2rem; margin: 0.4rem 0.2rem; outline: 0; }}
-  .ds-zones {{ margin: -1.25rem -0.9rem 0.8rem; }}
+  .ds-zones {{ display: none; }}
+  [data-testid="stMainBlockContainer"] {{ padding-top: 2.6rem; }}
   .ds-sheet {{ grid-template-columns: 1fr auto; align-items: start; gap: 0.6rem; margin-bottom: 0.8rem; }}
   .ds-sheet h1 {{ font-size: 1.55rem !important; }}
-  .ds-sheet p {{ display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-    font-size: 0.9rem; }}
+  .ds-sheet p {{ font-size: 0.88rem; }}
   .ds-sheetno {{ min-width: 3.6rem; }}
-  .ds-sheetno .k {{ font-size: 0.5rem; padding: 0.25rem; }}
+  .ds-sheetno .k {{ font-size: 0.6rem; padding: 0.25rem; }}
   .ds-sheetno .n {{ font-size: 1rem; padding: 0.25rem; }}
   .st-key-mobile_nav, .st-key-mobile_foot {{ display: block; }}
   /* on S-1 the hearing comes first: Detail A above the elevation */
