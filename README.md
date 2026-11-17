@@ -8,8 +8,8 @@ Unsupervised discovery of soundscape patterns in a year of deep-ocean hydrophone
 NOAA buoy wind, the USGS earthquake catalog, the hydrophone's laboratory calibration and MBARI's own
 published whale call indices.
 
-**Full report:** [English](docs/analysis.md) · [中文](docs/analysis_zh.md) &nbsp;|&nbsp;
-**Interactive dashboard:** see [Try it](#try-it)
+**Live dashboard:** [ocean-soundscape-ml-paullai.streamlit.app](https://ocean-soundscape-ml-paullai.streamlit.app)
+&nbsp;|&nbsp; **Full report:** [English](docs/analysis.md) · [中文](docs/analysis_zh.md)
 
 ![One year of the deep-ocean soundscape](docs/img/year_ltsa.png)
 
@@ -19,9 +19,13 @@ from August to November is blue whale B calls; vertical stripes are ships and st
 
 ## Try it
 
-The interactive dashboard (Streamlit) shows the year and the November week with named clusters; open
-**Inspect a window** to see any minute's spectrogram and **play it** (streamed from MBARI's archive,
-optionally sped up 10x so 20 Hz whale calls become audible).
+**[Open the live dashboard](https://ocean-soundscape-ml-paullai.streamlit.app)** (if it has been idle it
+shows a wake-up button and starts in about a minute). It is laid out as a drawing set: sheet S-1 shows
+the whole year and one minute you can hear; click any minute in the cluster lanes or the PCA plan to
+open it, and press **Listen** to stream that minute from MBARI's archive, sped up 10x so 20 Hz whale
+calls become audible. Sheets and the selected minute are kept in the URL, so a link opens the same view.
+
+To run it locally:
 
 ```bash
 pip install -r requirements.txt

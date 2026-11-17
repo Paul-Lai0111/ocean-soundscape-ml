@@ -11,3 +11,9 @@ outputs/synthetic/cache/
 
 # Local notes (not published)
 CLAUDE.md
+
+# Design-tool notes (local only)
+PRODUCT.md
+DESIGN.md
+DESIGN.json
+.impeccable/
