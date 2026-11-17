@@ -23,7 +23,11 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(APP))
 from oceansound.config import BANDS  # noqa: E402
 from oceansound.data import file_offset_seconds, for_listening, read_window  # noqa: E402
+import importlib  # noqa: E402
+
 import theme as T  # noqa: E402
+
+T = importlib.reload(T)  # a redeploy can keep the old module in memory; the theme is tiny
 
 st.set_page_config(page_title="Ocean Soundscape · Paul Lai", layout="wide",
                    initial_sidebar_state="auto")
