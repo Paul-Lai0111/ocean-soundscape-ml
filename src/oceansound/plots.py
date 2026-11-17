@@ -181,3 +181,29 @@ def plot_month_hour(grids: dict[str, pd.DataFrame], path: Path):
         ax.set_title(name, fontsize=9)
         fig.colorbar(m, ax=ax, fraction=0.05)
     _save(fig, path)
+
+
+def plot_index_comparison(monthly: pd.DataFrame, minute_df: pd.DataFrame, path: Path,
+                          r_minute: dict[str, float], r_month: dict[str, float]):
+    """Top: monthly curves of our feature vs MBARI CI. Bottom: per-minute scatter."""
+    pairs = [("fin_excess", "mbari_fin_ci", "Fin whale"), ("blue_excess", "mbari_blue_ci", "Blue whale B call")]
+    fig, axes = plt.subplots(2, 2, figsize=(12, 7))
+    x = np.arange(len(monthly))
+    for j, (ours, ref, title) in enumerate(pairs):
+        a = axes[0, j]
+        a.plot(x, monthly[f"{ours}_median"], "o-", color="tab:blue", label=f"{ours} (median, dB)")
+        a.set_ylabel(f"{ours} (dB)", color="tab:blue")
+        b = a.twinx()
+        b.plot(x, monthly[f"{ref}_mean"], "s--", color="tab:red", label=f"{ref} (mean)")
+        b.set_ylabel("MBARI CI (1 = no signal)", color="tab:red")
+        a.set_xticks(x)
+        a.set_xticklabels(monthly.index, rotation=45, ha="right", fontsize=7)
+        a.set_title(f"{title}: monthly, Spearman r = {r_month[ours]:.2f}", fontsize=10)
+
+        s = axes[1, j]
+        s.scatter(minute_df[ref], minute_df[ours], s=3, alpha=0.3, color="tab:gray")
+        s.set_xlabel(f"{ref} (MBARI)")
+        s.set_ylabel(f"{ours} (ours, dB)")
+        s.set_title(f"Per minute, Spearman r = {r_minute[ours]:.2f} (n = {minute_df[[ours, ref]].dropna().shape[0]})",
+                    fontsize=10)
+    _save(fig, path)

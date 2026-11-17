@@ -42,6 +42,8 @@ from .features import extract, log_freq_grid
 log = logging.getLogger("oceansound")
 
 META_COLS = ["segment_id", "source", "start_time", "label"]
+# Reference metrics kept alongside the features but never used for clustering
+REFERENCE_COLS = ["mbari_fin_ci", "mbari_blue_ci"]
 
 
 # ----------------------------------------------------------------------------
@@ -83,7 +85,8 @@ def load_features(out: Path, tag: str = ""):
 
 
 def feature_columns(df: pd.DataFrame) -> list[str]:
-    drop = set(META_COLS) | {"cluster"} | {c for c in df.columns if c.startswith("PC")}
+    drop = (set(META_COLS) | set(REFERENCE_COLS) | {"cluster"}
+            | {c for c in df.columns if c.startswith("PC")})
     return [c for c in df.columns if c not in drop]
 
 
@@ -114,7 +117,8 @@ def analyse(out: Path, seg_seconds: float, k: int | None = None, seed: int = 0,
         df[f"PC{i + 1}"] = res.pca_coords[:, i]
 
     df.to_csv(out / "features_clustered.csv", index=False)
-    describe_clusters(df, all_cols).round(2).to_csv(out / "cluster_summary.csv")
+    refs = [c for c in REFERENCE_COLS if c in df.columns and df[c].notna().any()]
+    describe_clusters(df, all_cols + refs).round(3).to_csv(out / "cluster_summary.csv")
     res.loadings.round(3).to_csv(out / "pca_loadings.csv")
 
     summary = {
@@ -166,6 +170,41 @@ def cmd_synthetic(a):
     analyse(a.out, a.seg_seconds, a.k, a.seed, a.features, a.clip)
 
 
+def _cache_is_current(path: Path) -> bool:
+    """A cached day is reused only if it has every column the current code writes.
+
+    Features added later (e.g. the MBARI call indices) would otherwise be silently
+    missing for cached days and NaN after concatenation.
+    """
+    if not path.exists():
+        return False
+    header = set(pd.read_csv(path, nrows=0).columns)
+    missing = set(REFERENCE_COLS) - header
+    if missing:
+        log.info("%s: cache predates %s, recomputing", path.name, ", ".join(sorted(missing)))
+    return not missing
+
+
+def _stream_day_with_retries(stream_day, date, a, attempts: int = 3, wait_s: float = 10.0):
+    """Stream and extract one day; retry transient network errors, skip missing/empty days.
+
+    Returns (features, ltsa, thumbs), or None if the day could not be processed.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return extract_all(stream_day(date, a.n_segments, a.seg_seconds), a.calibration_db)
+        except (FileNotFoundError, RuntimeError) as e:   # day missing, or every window was a gap
+            log.warning("%s: skipped (%s)", date, e)
+            return None
+        except Exception as e:  # noqa: BLE001 - network errors come from s3fs/botocore/aiohttp
+            if attempt == attempts:
+                log.warning("%s: failed after %d attempts (%s: %s)", date, attempts, type(e).__name__, e)
+                return None
+            log.warning("%s: attempt %d failed (%s), retrying in %.0f s", date, attempt,
+                        type(e).__name__, wait_s * attempt)
+            time.sleep(wait_s * attempt)
+
+
 def cmd_mbari(a):
     from .data import stream_mbari_day
 
@@ -176,22 +215,22 @@ def cmd_mbari(a):
                              f"outside that period: {bad}")
         a.calibration_db = MARS_DEP02_CALIBRATION_DB
     cache = a.out / "cache"
-    parts = []
+    parts, failed = [], []
     for d in a.dates:
         date = dt.date.fromisoformat(d)
         tag = f"_{date:%Y%m%d}" + (f"_cal{a.calibration_db:g}" if a.calibration_db else "")
-        if (cache / f"features{tag}.csv").exists() and not a.force:
+        if _cache_is_current(cache / f"features{tag}.csv") and not a.force:
             log.info("%s: using cache", date)
         else:
             log.info("%s: streaming %d x %gs windows from S3", date, a.n_segments, a.seg_seconds)
-            try:
-                df, ltsa, thumbs = extract_all(stream_mbari_day(date, a.n_segments, a.seg_seconds),
-                                               a.calibration_db)
-            except (FileNotFoundError, RuntimeError) as e:  # day missing, or all windows were gaps
-                log.warning("%s: skipped (%s)", date, e)
+            result = _stream_day_with_retries(stream_mbari_day, date, a)
+            if result is None:
+                failed.append(str(date))
                 continue
-            save_features(cache, df, ltsa, thumbs, tag)
+            save_features(cache, *result, tag)
         parts.append(load_features(cache, tag))
+    if failed:
+        log.warning("days not processed: %s (re-run the same command to retry them)", ", ".join(failed))
 
     if not parts:
         raise SystemExit("no usable days")
@@ -265,6 +304,35 @@ def cmd_patterns(a):
     log.info("monthly medians:\n%s", monthly[[f"{f}_median" for f in feats] + ["n_windows"]].round(1))
 
 
+def cmd_compare(a):
+    """Compare fin_excess / blue_excess with MBARI's call indices (calibrated runs only)."""
+    from . import validation
+
+    df = pd.read_csv(a.out / "features_clustered.csv")
+    if df[list(validation.PAIRS.values())].isna().all().all():
+        raise SystemExit("this run has no MBARI call indices; re-run 'mbari' with --calibrated")
+    minute = validation.minute_agreement(df)
+    monthly, month_r = validation.monthly_agreement(df)
+    by_cluster = validation.index_by_cluster(df)
+    minute.round(4).to_csv(a.out / "mbari_ci_minute_agreement.csv", index=False)
+    monthly.round(4).to_csv(a.out / "mbari_ci_monthly.csv")
+    month_r.round(4).to_csv(a.out / "mbari_ci_monthly_agreement.csv", index=False)
+    by_cluster.round(4).to_csv(a.out / "mbari_ci_by_cluster.csv")
+    plots.plot_index_comparison(monthly, df, a.out / "figures" / "mbari_ci_comparison.png",
+                                dict(zip(minute["ours"], minute["spearman_r"])),
+                                dict(zip(month_r["ours"], month_r["spearman_r_months"])))
+    summary = json.loads((a.out / "summary.json").read_text())
+    summary["mbari_ci"] = {
+        "minute_spearman": {r.ours: round(r.spearman_r, 3) for r in minute.itertuples()},
+        "monthly_spearman": {r.ours: round(r.spearman_r_months, 3) for r in month_r.itertuples()},
+        "median_ci_by_cluster": {str(k): {c: round(float(v), 4) for c, v in row.items() if c != "n_windows"}
+                                 for k, row in by_cluster.iterrows()},
+    }
+    (a.out / "summary.json").write_text(json.dumps(summary, indent=2))
+    log.info("per minute:\n%s\nper month:\n%s\nby cluster:\n%s", minute.round(3), month_r.round(3),
+             by_cluster.round(3))
+
+
 def cmd_recluster(a):
     if a.src:  # start a new run directory from an existing run's features
         import shutil
@@ -332,6 +400,10 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("patterns", help="seasonal (monthly) and diel (hour-of-day) summaries of a run")
     s.add_argument("--out", type=Path, required=True)
     s.set_defaults(func=cmd_patterns)
+
+    s = sub.add_parser("compare", help="compare fin/blue features with MBARI's call indices")
+    s.add_argument("--out", type=Path, required=True)
+    s.set_defaults(func=cmd_compare)
 
     s = sub.add_parser("recluster", help="re-run clustering on an existing output dir")
     common(s)

@@ -198,3 +198,102 @@ def test_temporal_local_hour_handles_daylight_saving():
     assert m.loc["2019-01", "fin_excess_median"] == 7.0 and m.loc["2018-07", "n_windows"] == 1
     c = temporal.diel_contrast(df, ["fin_excess"])
     assert c.loc["2019-01", "fin_excess"] == 4.0                     # night 9 - day 5
+
+
+def test_mbari_call_index_matches_mbari_tutorial_code():
+    """Re-implements the call-index lines of MBARI's tutorial and compares."""
+    from scipy import signal
+
+    from oceansound.config import MARS_DEP02_CALIBRATION_DB, MARS_DEP02_SENSITIVITY_DB
+
+    rng = np.random.default_rng(5)
+    for kind in ["fin_whale", "blue_whale"]:
+        x = make_segment(kind, FS, 60, rng)
+        ours = extract(x, FS, calibration_db=MARS_DEP02_CALIBRATION_DB).features
+
+        # --- MBARI tutorial (PacificSound_FinCallindex / PacificSoundBlueBCallIndex) ---
+        v = (x - x.mean()).astype(np.float64) * 3          # tutorial: v = v*3 (our extract removes DC)
+        w = signal.get_window("hann", FS)
+        f, psd = signal.welch(v, fs=FS, window=w, nfft=FS)
+        sg = 10 * np.log10(psd) - MARS_DEP02_SENSITIVITY_DB
+        fin = np.mean([sg[f == 20], sg[f == 21]]) / np.mean([sg[f == 12], sg[f == 34]])
+        blue = np.mean([sg[f == 43], sg[f == 44]]) / np.mean([sg[f == 37], sg[f == 50]])
+
+        assert abs(ours["mbari_fin_ci"] - fin) < 1e-3
+        assert abs(ours["mbari_blue_ci"] - blue) < 1e-3
+
+    amb = extract(make_segment("ambient", FS, 60, rng), FS, MARS_DEP02_CALIBRATION_DB).features
+    fin = extract(make_segment("fin_whale", FS, 60, rng), FS, MARS_DEP02_CALIBRATION_DB).features
+    assert fin["mbari_fin_ci"] > amb["mbari_fin_ci"] + 0.1
+
+
+def test_call_indices_are_reference_only():
+    """Uncalibrated runs give NaN indices, and indices never enter clustering."""
+    import pandas as pd
+
+    feats = extract(make_segment("ambient", FS, 10, np.random.default_rng(0)), FS).features
+    assert np.isnan(feats["mbari_fin_ci"]) and np.isnan(feats["mbari_blue_ci"])
+    df = pd.DataFrame([{"segment_id": "a", "source": "s", "start_time": 0, "label": None, **feats}])
+    cols = pipeline.feature_columns(df)
+    assert "mbari_fin_ci" not in cols and "mbari_blue_ci" not in cols and "fin_excess" in cols
+
+
+def test_validation_agreement_tables():
+    import pandas as pd
+
+    from oceansound import validation
+
+    rng = np.random.default_rng(0)
+    t = pd.date_range("2018-07-01", periods=240, freq="3D", tz="UTC")
+    signal_ = np.sin(np.arange(240) / 240 * 2 * np.pi) + rng.normal(0, 0.1, 240)
+    df = pd.DataFrame({"start_time": t.astype(str), "cluster": (signal_ > 0).astype(int),
+                       "fin_excess": 5 * signal_, "mbari_fin_ci": 1 + 0.05 * signal_,
+                       "blue_excess": rng.normal(size=240), "mbari_blue_ci": 1 + 0.05 * rng.normal(size=240)})
+    m = validation.minute_agreement(df).set_index("ours")
+    assert m.loc["fin_excess", "spearman_r"] > 0.95 and abs(m.loc["blue_excess", "spearman_r"]) < 0.3
+    table, months = validation.monthly_agreement(df)
+    assert len(table) == 24 and months.set_index("ours").loc["fin_excess", "spearman_r_months"] > 0.9
+    c = validation.index_by_cluster(df)
+    assert c.loc[1, "mbari_fin_ci"] > c.loc[0, "mbari_fin_ci"]
+
+
+def test_day_streaming_retries_transient_errors_and_skips_missing():
+    from types import SimpleNamespace
+
+    from oceansound.data import Segment
+
+    a = SimpleNamespace(n_segments=2, seg_seconds=5, calibration_db=0.0)
+    calls = {"n": 0}
+
+    def flaky(date, n, s):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ConnectionError("endpoint unreachable")
+        x = make_segment("ambient", FS, 5, np.random.default_rng(0))
+        return iter([Segment("s0", "t", None, FS, x)])
+
+    out = pipeline._stream_day_with_retries(flaky, "2019-03-01", a, wait_s=0)
+    assert out is not None and calls["n"] == 2
+
+    def missing(date, n, s):
+        raise FileNotFoundError("no file")
+
+    assert pipeline._stream_day_with_retries(missing, "2019-04-05", a, wait_s=0) is None
+
+    def always_down(date, n, s):
+        raise ConnectionError("down")
+
+    assert pipeline._stream_day_with_retries(always_down, "2019-03-01", a, attempts=2, wait_s=0) is None
+
+
+def test_stale_cache_without_reference_columns_is_recomputed():
+    import pandas as pd
+
+    with tempfile.TemporaryDirectory() as d:
+        old = Path(d) / "features_old.csv"
+        pd.DataFrame({"segment_id": ["a"], "fin_excess": [1.0]}).to_csv(old, index=False)
+        new = Path(d) / "features_new.csv"
+        pd.DataFrame({"segment_id": ["a"], "mbari_fin_ci": [1.0], "mbari_blue_ci": [1.0]}).to_csv(new, index=False)
+        assert not pipeline._cache_is_current(old)
+        assert pipeline._cache_is_current(new)
+        assert not pipeline._cache_is_current(Path(d) / "missing.csv")

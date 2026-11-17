@@ -74,3 +74,14 @@ MARS_DEP02_SENSITIVITY_DB = -177.9          # dB re 1 V/uPa at 250 Hz
 MARS_VOLTS_PER_UNIT = 3.0                   # float sample -> volts (MBARI tutorial)
 MARS_DEP02_CALIBRATION_DB = round(20 * math.log10(MARS_VOLTS_PER_UNIT)
                                   - MARS_DEP02_SENSITIVITY_DB, 2)   # = 187.44
+
+# --- MBARI call indices (reference metrics, not used for clustering) --------
+# From MBARI's Pacific Sound tutorials (J. Ryan): CI = mean spectrum level (dB re
+# 1 uPa^2/Hz) at the peak frequencies divided by the mean at the background
+# frequencies, from 60 s Welch spectra with a 1 s Hann window (1 Hz bins).
+# CI = 1 means no signal. Needs calibrated levels, so it is NaN for uncalibrated runs.
+#   name: ((peak Hz, ...), (background Hz, ...))
+MBARI_CALL_INDICES: dict[str, tuple[tuple[int, ...], tuple[int, ...]]] = {
+    "mbari_fin_ci": ((20, 21), (12, 34)),    # fin whale 20 Hz pulse
+    "mbari_blue_ci": ((43, 44), (37, 50)),   # blue whale B call, 3rd harmonic
+}

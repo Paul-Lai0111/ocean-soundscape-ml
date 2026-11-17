@@ -21,7 +21,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal, stats
 
-from .config import BANDS, EXCESS_BANDS, FMAX, FMIN, N_LOG_FREQ_BINS, THUMB_TIME_FRAMES
+from .config import BANDS, EXCESS_BANDS, FMAX, FMIN, MBARI_CALL_INDICES, N_LOG_FREQ_BINS, THUMB_TIME_FRAMES
 
 EPS = 1e-20
 
@@ -120,6 +120,16 @@ def extract(x: np.ndarray, fs: int, calibration_db: float = 0.0) -> SegmentFeatu
 
     # ---- 3. Waveform statistics ---------------------------------------------
     feats["kurtosis"] = float(stats.kurtosis(x, fisher=True))
+
+    # ---- MBARI call indices (reference only; need calibrated dB re 1 uPa) -----
+    psd_db = _db(psd)
+    for name, (peak, background) in MBARI_CALL_INDICES.items():
+        if calibration_db:
+            pk = np.mean([psd_db[np.argmin(np.abs(f - hz))] for hz in peak])
+            bg = np.mean([psd_db[np.argmin(np.abs(f - hz))] for hz in background])
+            feats[name] = float(pk / bg)
+        else:
+            feats[name] = float("nan")
 
     # ---- LTSA row and thumbnail on a shared log-frequency grid -------------
     grid = log_freq_grid()
