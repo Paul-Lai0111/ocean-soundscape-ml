@@ -3,7 +3,11 @@
 Unsupervised discovery of soundscape patterns in a year of deep-ocean hydrophone recordings from
 [MBARI's Pacific Sound archive](https://registry.opendata.aws/pacific-sound/) (MARS cabled observatory,
 890 m depth, Monterey Bay, California), with every interpretation checked against independent data:
-NOAA buoy wind, the USGS earthquake catalog, and the hydrophone's laboratory calibration.
+NOAA buoy wind, the USGS earthquake catalog, the hydrophone's laboratory calibration and MBARI's own
+published whale call indices.
+
+**Full report:** [English](docs/analysis.md) · [中文](docs/analysis_zh.md) &nbsp;|&nbsp;
+**Interactive dashboard:** see [Try it](#try-it)
 
 ![One year of the deep-ocean soundscape](docs/img/year_ltsa.png)
 
@@ -36,6 +40,43 @@ so no pipeline run is needed. The same setup deploys as-is to Streamlit Communit
 | 4 | **The pipeline found an earthquake on its own.** The loudest minute of the first week is an M3.3 quake 78 km away, arriving ~17 s after origin time. | [Earthquake](#4-an-earthquake-found-without-looking-for-one) |
 | 5 | **Our call features agree with MBARI's published call indices, after a flaw the comparison exposed was fixed.** On the same 2,189 minutes they track ours month by month (Spearman r = 0.99 fin, 0.91 blue). The comparison showed our fin whale background bands contained blue whale harmonics; the fixed feature raised per-minute agreement from 0.81 to 0.93. | [MBARI comparison](#6-agreement-with-mbaris-published-call-indices) |
 | 6 | **Archive quirks are handled.** Zero-filled recording gaps (22 of 336 minutes in the first week, including a partial 2% gap that would have silently skewed features), 3 missing days, network drops that had silently removed minutes, and suspected instrument transients. | [Data quality](#5-data-quality) |
+
+## Conclusions
+
+1. **The deep-ocean soundscape has a strong biological season**: fin, blue and humpback whale indicators
+   rise from September, peak in October-November and fade by January, in step with MBARI's own call
+   indices (monthly r = 0.99 fin, 0.91 blue).
+2. **Weather dominates the raw sound, so naive clustering finds weather**: noise above 100 Hz follows
+   buoy wind (r up to 0.86), and all-feature clusters split calm from windy minutes.
+3. **Feature design decides what unsupervised learning finds**: features that compare a band with its
+   neighbours or with itself over time cancel the wind (η² 0.020) and separate whale calls, background
+   and impulsive events; the measured cost is that ships merge with background.
+4. **Independent validation catches what internal metrics miss**: the comparison with MBARI exposed blue
+   whale harmonics inside our fin whale feature; ablation located the cause and the fix raised agreement
+   from 0.81 to 0.93.
+5. **Outliers are worth reading one by one**: one was a real M3.3 earthquake, others suspected
+   instrument transients.
+6. **Real archives need defensive engineering**: zero-filled gaps, missing days and network drops each
+   caused silent errors that were caught only by checking counts after every run.
+
+Not yet established: the humpback cluster is named from spectrograms only, the day/night pattern is a
+hint, and everything comes from one year sampled every 4th day.
+
+## What was built
+
+- **A Python pipeline with 8 commands** (`synthetic`, `mbari`, `local`, `list`, `recluster`, `wind`,
+  `patterns`, `compare`) that streams minutes from a 4 GB-per-day public archive, extracts 16 acoustic
+  features, clusters them and validates the result.
+- **Signal processing**: Welch spectra, spectrograms and long-term spectral averages, band levels,
+  call-band excess, spectral shape, within-minute variability, kurtosis, calibration to dB re 1 µPa.
+- **Machine learning and statistics**: standardization, winsorizing, PCA, K-Means with silhouette,
+  ARI on synthetic ground truth, Spearman correlation, η², ablation.
+- **Four independent validations**: NOAA wind, USGS earthquakes, MBARI calibration, MBARI call indices
+  (re-implemented line by line and cross-checked against MBARI's 2 kHz product to within 0.0006).
+- **Engineering**: versioned per-day caching, retries for network errors, gap and short-read detection,
+  23 offline tests, and a Streamlit dashboard with audio playback that deploys from `demo/`.
+- **A documented history**: each step is one commit, from the first real-data run through the fin
+  whale fix (see the [full report](docs/analysis.md), section 2).
 
 ## What the pipeline does
 
@@ -328,6 +369,6 @@ src/oceansound/
 app/dashboard.py  Streamlit explorer with audio playback (reads demo/ and outputs/)
 demo/             compact copies of the year and November runs for the dashboard
 scripts/          one-off figures
-docs/             figures and the analysis write-up (Chinese: docs/analysis_zh.md)
+docs/             figures and the full report (English: docs/analysis.md, Chinese: docs/analysis_zh.md)
 tests/            offline tests
 ```
