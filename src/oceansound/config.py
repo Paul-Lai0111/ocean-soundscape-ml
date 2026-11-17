@@ -34,7 +34,7 @@ BANDS: dict[str, tuple[float, float, str]] = {
     "b_100_1k":     (100, 1000,  "Mid band: nearby ships, humpback song (lower part)"),
     "b_1k_8k":      (1000, 7900, "High band: wind/surface noise, humpback, dolphins"),
     "fin_17_25":    (17, 25,     "Fin whale 20 Hz pulse band"),
-    "blue_40_50":   (40, 50,     "NE Pacific blue whale B-call fundamental (~43-47 Hz)"),
+    "blue_40_50":   (40, 50,     "NE Pacific blue whale B call, 3rd harmonic (~43-47 Hz; fundamental ~15 Hz)"),
     "hump_200_2k":  (200, 2000,  "Core humpback song band"),
 }
 

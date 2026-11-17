@@ -486,7 +486,7 @@ speakers can play. Playing ten times faster lifts a 20 Hz call to 200 Hz and squ
 to right, frequency rising on a log scale from 10 Hz to 7.9 kHz. Darker ink is louder.</p>
 <ol class="ds-notes">
 <li><span><b>~20 Hz</b>: fin whale chorus, a dark band {"from September, strongest October-November" if year else "through the week"}.</span></li>
-<li><span><b>~45 Hz</b>: blue whale B calls.</span></li>
+<li><span><b>~45 Hz</b>: blue whale B calls (their third harmonic, the clearest).</span></li>
 <li><span><b>Above 1 kHz</b>: wind on the sea surface. Vertical stripes are windy days.</span></li>
 </ol></div>""", unsafe_allow_html=True)
             quiz("ltsa", "Where should a fin whale chorus appear?",
@@ -500,7 +500,7 @@ to right, frequency rising on a log scale from 10 Hz to 7.9 kHz. Darker ink is l
 minute with the strongest fin whale signal.</p>
 <ol class="ds-notes">
 <li><span><b>Fin whale</b>: short pulses near 20 Hz, repeated through the minute.</span></li>
-<li><span><b>Blue whale</b>: a long, steady tone just below 50 Hz, with fainter harmonics above it.</span></li>
+<li><span><b>Blue whale</b>: a long, steady tone near 45 Hz, the clearest harmonic of the B call (its fundamental is near 15 Hz).</span></li>
 <li><span><b>Ship or wind</b>: broad energy across many frequencies at once, not a narrow line.</span></li>
 </ol></div>""", unsafe_allow_html=True)
             quiz("spec", "A minute shows energy spread evenly from 100 Hz to 5 kHz. Most likely?",

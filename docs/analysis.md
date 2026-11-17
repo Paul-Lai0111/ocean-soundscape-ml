@@ -172,7 +172,8 @@ Finding each day's file used to re-list the whole month on S3 (~13 s); listings 
 
 - **A nearly continuous bright band at 15-25 Hz**: the fin whale chorus (many whales near and far).
   `fin_excess` median 7.4 dB; 90% of minutes above 3 dB.
-- **An intermittent line near 45 Hz**: northeast Pacific blue whale B calls, strongest on 5-6 November.
+- **An intermittent line near 45 Hz**: northeast Pacific blue whale B calls (their third harmonic, the clearest
+  one and the one MBARI's blue whale index uses; the fundamental is near 15 Hz), strongest on 5-6 November.
 - **Vertical stripes from the bottom up**: passing ships.
 - **Noise above 1 kHz brightening and darkening by day**: 3-5 November is ~12 dB louder than
   1 November; section 6 shows this is wind.
