@@ -1,7 +1,8 @@
 """Interactive soundscape explorer.
 
 Run:  streamlit run app/dashboard.py
-Then pick an output directory produced by `python -m oceansound.pipeline ...`.
+It lists the compact demo runs in demo/ (committed; built by scripts/make_demo_data.py)
+and any run directory produced by `python -m oceansound.pipeline ...` under outputs/.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from oceansound.data import file_offset_seconds, for_listening, read_window  # n
 
 st.set_page_config(page_title="Ocean Soundscape Explorer", layout="wide")
 PALETTE = px.colors.qualitative.Set2
+REPO_URL = "https://github.com/Paul-Lai0111/ocean-soundscape-ml"
 
 
 @st.cache_data
@@ -37,7 +39,18 @@ def load_run(out: str):
     summ = pd.read_csv(out / "cluster_summary.csv", index_col=0)
     conf = out / "confusion_true_vs_cluster.csv"
     conf = pd.read_csv(conf, index_col=0) if conf.exists() else None
-    return df, z["ltsa"][idx], z["thumbs"][idx].astype(np.float32), z["freqs"], summary, summ, conf
+    thumbs = z["thumbs"][idx].astype(np.float32)
+    if "thumb_db_range" in z.files:  # compact demo runs store 8-bit thumbnails
+        lo, hi = z["thumb_db_range"]
+        thumbs = lo + thumbs / 255.0 * (hi - lo)
+    return df, z["ltsa"][idx].astype(np.float32), thumbs, z["freqs"], summary, summ, conf
+
+
+def run_title(path: Path) -> str:
+    try:
+        return json.loads((path / "summary.json").read_text()).get("demo", {}).get("title") or path.name
+    except (OSError, ValueError):
+        return path.name
 
 
 @st.cache_data(show_spinner="Streaming audio from MBARI S3...", max_entries=32)
@@ -48,15 +61,22 @@ def load_audio(source: str, start_time: pd.Timestamp, seconds: float):
 
 # ---------------------------------------------------------------- sidebar ---
 st.sidebar.title("Ocean Soundscape Explorer")
-runs = sorted(p.parent for p in (ROOT / "outputs").glob("*/summary.json"))
+runs = (sorted(p.parent for p in (ROOT / "demo").glob("*/summary.json"))
+        + sorted(p.parent for p in (ROOT / "outputs").glob("*/summary.json")))
 if not runs:
     st.info("No runs found. Try:\n\n`python -m oceansound.pipeline synthetic --out outputs/synthetic`")
     st.stop()
-run = st.sidebar.selectbox("Run", runs, format_func=lambda p: p.name)
+run = st.sidebar.selectbox("Run", runs, format_func=run_title)
 df, ltsa, thumbs, freqs, summary, summ, conf = load_run(str(run))
-df["cluster_str"] = "C" + df["cluster"].astype(str)
-cluster_names = sorted(df["cluster_str"].unique(), key=lambda s: int(s[1:]))
+demo = summary.get("demo", {})
+named = demo.get("cluster_names", {})
+label_of = {k: f"C{k} · {named[str(k)][0]}" if str(k) in named else f"C{k}"
+            for k in sorted(df["cluster"].unique())}
+df["cluster_str"] = df["cluster"].map(label_of)
+cluster_names = list(label_of.values())
+id_of = {v: k for k, v in label_of.items()}
 color_map = {c: PALETTE[i % len(PALETTE)] for i, c in enumerate(cluster_names)}
+units = summary.get("units", "dB re FS")
 
 st.sidebar.markdown(f"**Windows:** {summary['n_windows']} x {summary['seg_seconds']:g} s")
 st.sidebar.markdown(f"**Clusters (k):** {summary['k']}")
@@ -64,6 +84,17 @@ st.sidebar.markdown(f"**Silhouette:** {summary['silhouette_by_k'][str(summary['k
 if "adjusted_rand_index" in summary:
     st.sidebar.markdown(f"**ARI vs truth:** {summary['adjusted_rand_index']:.3f}")
 st.sidebar.caption(f"{summary['time_range'][0]} -> {summary['time_range'][1]}")
+st.sidebar.caption(f"Levels in {units}. Code, method and findings: [GitHub]({REPO_URL})")
+
+st.title("Ocean Soundscape Explorer")
+st.markdown("Deep-ocean hydrophone recordings from MBARI's MARS observatory (890 m, Monterey Bay), "
+            "grouped by unsupervised learning. Pick a run on the left; open **Inspect a window** "
+            "to see and **hear** any minute.")
+if demo:
+    st.info(f"**{demo['title']}.** {demo['description']}")
+    if named:
+        st.markdown("\n".join(f"- **{label_of[int(k)]}**: {v[1]}" for k, v in sorted(named.items())
+                               if int(k) in label_of))
 
 tab_time, tab_clusters, tab_inspect, tab_about = st.tabs(
     ["Soundscape over time", "Clusters", "Inspect a window", "About the features"])
@@ -71,8 +102,8 @@ tab_time, tab_clusters, tab_inspect, tab_about = st.tabs(
 # ------------------------------------------------------- soundscape tab -----
 with tab_time:
     st.subheader("Long-term spectral average (LTSA)")
-    st.caption("Each column is one analysed window; colour is power spectral density (dB/Hz). "
-               "Levels are relative (dB re full scale) unless a calibration offset was applied.")
+    st.caption(f"Each column is one analysed window; colour is power spectral density ({units}²/Hz "
+               "when calibrated). Bright band near 20 Hz: fin whales; line near 45 Hz: blue whales.")
     x = df["start_time"].dt.strftime("%Y-%m-%d %H:%M")
     lo, hi = np.percentile(ltsa, [2, 99.5])
     fig = go.Figure(go.Heatmap(z=ltsa.T, x=x, y=freqs, colorscale="Viridis", zmin=lo, zmax=hi,
@@ -171,7 +202,7 @@ with tab_inspect:
         st.plotly_chart(fig, width="stretch")
     feats = summary["features"]
     comp = pd.DataFrame({"this window": df.loc[row, feats].astype(float),
-                         "cluster mean": summ.loc[int(cl[1:]), feats].astype(float),
+                         "cluster mean": summ.loc[id_of[cl], feats].astype(float),
                          "all windows mean": df[feats].mean()}).round(2)
     st.dataframe(comp, width="stretch")
 

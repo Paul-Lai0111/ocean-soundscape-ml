@@ -11,6 +11,21 @@ NOAA buoy wind, the USGS earthquake catalog, and the hydrophone's laboratory cal
 The bright band at ~20 Hz from September to January is the fin whale chorus; the thin line at ~45 Hz
 from August to November is blue whale B calls; vertical stripes are ships and storms.*
 
+## Try it
+
+The interactive dashboard (Streamlit) shows the year and the November week with named clusters; open
+**Inspect a window** to see any minute's spectrogram and **play it** (streamed from MBARI's archive,
+optionally sped up 10x so 20 Hz whale calls become audible).
+
+```bash
+pip install -r requirements.txt
+streamlit run app/dashboard.py
+```
+
+It runs from the compact demo data committed in `demo/` (18 MB; built by `scripts/make_demo_data.py`),
+so no pipeline run is needed. The same setup deploys as-is to Streamlit Community Cloud
+(main file `app/dashboard.py`).
+
 ## Key findings
 
 | # | Finding | Evidence |
@@ -233,7 +248,7 @@ Relative features (excess, variability, shape) do not depend on calibration.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q                                          # 22 offline tests, ~25 s
+pytest -q                                          # 23 offline tests, ~25 s
 
 # Offline demo on labelled synthetic sources
 python -m oceansound.pipeline synthetic --out outputs/synthetic
@@ -310,7 +325,8 @@ src/oceansound/
   validation.py   agreement with MBARI's call indices
   plots.py        static figures
   pipeline.py     CLI: synthetic | mbari | local | list | recluster | wind | patterns | compare
-app/dashboard.py  Streamlit explorer with audio playback
+app/dashboard.py  Streamlit explorer with audio playback (reads demo/ and outputs/)
+demo/             compact copies of the year and November runs for the dashboard
 scripts/          one-off figures
 docs/             figures and the analysis write-up (Chinese: docs/analysis_zh.md)
 tests/            offline tests

@@ -376,3 +376,22 @@ def test_cache_file_names_carry_the_feature_version(monkeypatch):
         s = json.loads((out / "summary.json").read_text())
     assert all(name.endswith(f"_v{config.FEATURE_VERSION}.csv") for name in seen) and len(seen) == 3
     assert s["feature_version"] == config.FEATURE_VERSION
+
+
+def test_committed_demo_runs_are_complete():
+    """demo/ is what the hosted dashboard shows: every cluster named, spectra decode sensibly."""
+    import pandas as pd
+
+    root = Path(__file__).resolve().parents[1] / "demo"
+    runs = sorted(root.glob("*/summary.json"))
+    assert len(runs) == 2
+    for summary_path in runs:
+        run = summary_path.parent
+        s = json.loads(summary_path.read_text())
+        df = pd.read_csv(run / "features_clustered.csv")
+        assert set(map(str, df["cluster"].unique())) == set(s["demo"]["cluster_names"])
+        z = np.load(run / "spectra.npz", allow_pickle=True)
+        assert z["thumbs"].dtype == np.uint8 and len(z["segment_ids"]) == len(df) == s["n_windows"]
+        lo, hi = z["thumb_db_range"]
+        assert 20 < lo < hi < 140                     # calibrated dB re 1 uPa^2/Hz
+        assert s["units"] == "dB re 1 µPa" and s["feature_version"] == 2

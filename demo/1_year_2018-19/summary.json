@@ -1,0 +1,97 @@
+{
+  "n_windows": 2189,
+  "n_dropped_nonfinite": 0,
+  "seg_seconds": 60,
+  "k": 3,
+  "silhouette_by_k": {
+    "2": 0.4789,
+    "3": 0.5126,
+    "4": 0.4563,
+    "5": 0.3684,
+    "6": 0.3318,
+    "7": 0.2276,
+    "8": 0.2383
+  },
+  "pca_explained_variance": [
+    0.3999,
+    0.2146,
+    0.1852,
+    0.1137,
+    0.0829
+  ],
+  "feature_version": 2,
+  "calibration_db": 187.44,
+  "units": "dB re 1 µPa",
+  "feature_set": "relative",
+  "clip_quantile": 0.01,
+  "features": [
+    "fin_excess",
+    "blue_excess",
+    "var_10_100",
+    "var_200_2k",
+    "p90_minus_med_200_2k",
+    "kurtosis"
+  ],
+  "time_range": [
+    "2018-07-01 00:00:00+00:00",
+    "2019-06-29 23:59:00+00:00"
+  ],
+  "wind": {
+    "station": "46042",
+    "n_matched": 2171,
+    "spearman_b_1k_8k": 0.861,
+    "wind_ms_median_by_cluster": {
+      "0": 6.4,
+      "1": 4.5,
+      "2": 5.55
+    }
+  },
+  "mbari_ci": {
+    "minute_spearman": {
+      "fin_excess": 0.934,
+      "blue_excess": 0.656
+    },
+    "monthly_spearman": {
+      "fin_excess": 0.993,
+      "blue_excess": 0.909
+    },
+    "median_ci_by_cluster": {
+      "0": {
+        "mbari_fin_ci": 1.0151,
+        "mbari_blue_ci": 1.0103
+      },
+      "1": {
+        "mbari_fin_ci": 1.0911,
+        "mbari_blue_ci": 1.0496
+      },
+      "2": {
+        "mbari_fin_ci": 1.0004,
+        "mbari_blue_ci": 1.0052
+      }
+    }
+  },
+  "demo": {
+    "title": "One year, Jul 2018 - Jun 2019 (2,189 minutes)",
+    "description": "One minute per hour, every 4th day, calibrated to dB re 1 µPa. Clustered on the six 'relative' features (wind-insensitive). The song-season cluster holds about half of all minutes in October-November and 0.5-3% in March-August.",
+    "cluster_names": {
+      "0": [
+        "Background",
+        "Most minutes; MBARI fin and blue indices near 1 (no call)."
+      ],
+      "1": [
+        "Whale song season",
+        "Fin, blue and humpback indicators all elevated; highest MBARI fin (1.091) and blue (1.050) indices."
+      ],
+      "2": [
+        "Impulsive transients",
+        "Very high kurtosis; short pulses, several suspected instrument transients."
+      ]
+    },
+    "source_run": "outputs/mbari_2018-19_relative",
+    "thumb_db_range": [
+      36.25,
+      100.94
+    ],
+    "max_quantization_error_db": 0.127
+  }
+}
