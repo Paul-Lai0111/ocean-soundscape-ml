@@ -8,3 +8,6 @@ outputs/*
 !outputs/synthetic/
 outputs/synthetic/cache/
 .DS_Store
+
+# Local notes (not published)
+CLAUDE.md
